@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: 'Noto Sans SC', system-ui, sans-serif;
+    background-color: #0B1120;
+    color: #FFFFFF;
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #1A2332;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #3D5272;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #00D4FF;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-bg-secondary/80 backdrop-blur-sm border border-border-primary rounded-lg shadow-card;
+  }
+
+  .data-value {
+    @apply font-display font-bold text-2xl text-text-primary;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .data-label {
+    @apply text-sm text-text-secondary;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full inline-block;
+  }
+
+  .status-online {
+    @apply bg-accent-secondary animate-pulse;
+  }
+
+  .status-offline {
+    @apply bg-text-muted;
+  }
+
+  .status-alarm {
+    @apply bg-accent-danger animate-pulse;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-accent-primary/20 text-accent-primary border border-accent-primary/50 rounded-lg
+           hover:bg-accent-primary/30 hover:shadow-glow-primary transition-all duration-300
+           font-medium text-sm;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-bg-tertiary text-text-primary border border-border-primary rounded-lg
+           hover:bg-border-primary transition-all duration-300 font-medium text-sm;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-accent-danger/20 text-accent-danger border border-accent-danger/50 rounded-lg
+           hover:bg-accent-danger/30 hover:shadow-glow-danger transition-all duration-300
+           font-medium text-sm;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg
+           text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-primary
+           focus:ring-1 focus:ring-accent-primary transition-all duration-200 text-sm;
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .glow-text {
+    text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+  }
+}
+
+@layer utilities {
+  .animate-number-roll {
+    transition: all 0.3s ease-out;
+  }
+
+  .border-gradient {
+    border-image: linear-gradient(135deg, #00D4FF, #00E676) 1;
+  }
+}
