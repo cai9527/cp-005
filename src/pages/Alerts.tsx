@@ -372,8 +372,8 @@ export default function Alerts() {
       </div>
 
       {showRuleModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="glass-card w-[500px] p-6">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2147483646] backdrop-blur-sm">
+          <div className="glass-card w-[500px] p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <h3 className="font-display text-lg font-bold text-text-primary mb-4">
               {editingRule ? '编辑预警规则' : '新建预警规则'}
             </h3>
