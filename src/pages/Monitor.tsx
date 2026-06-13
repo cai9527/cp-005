@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Wifi, WifiOff, AlertTriangle, X } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Wifi, WifiOff, AlertTriangle, X, RefreshCw } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { useCraneStore } from '@/stores/craneStore'
 import { useAlertStore } from '@/stores/alertStore'
@@ -24,15 +24,15 @@ const chartTypes = ['load', 'moment', 'radius', 'height', 'rotation', 'wind']
 const miniTypes = ['load', 'height', 'wind']
 
 export default function Monitor() {
-  const { cranes, sensorData, stats, selectedCraneId, selectCrane } = useCraneStore()
-  const { activeAlerts } = useAlertStore()
+  const {
+    cranes, sensorData, stats, selectedCraneId, selectCrane,
+    fetchCranes, fetchCraneStats, fetchLatestSensorData,
+  } = useCraneStore()
+  const { activeAlerts, fetchActiveAlerts } = useAlertStore()
   const [historyData, setHistoryData] = useState<Record<string, any>[]>([])
+  const [refreshing, setRefreshing] = useState(false)
 
-  const selectedCrane = cranes.find(c => c.id === selectedCraneId)
-  const craneAlerts = activeAlerts.filter(a => a.crane_id === selectedCraneId)
-  const latestAlerts = activeAlerts.slice(0, 10)
-
-  useEffect(() => {
+  const loadHistoryData = useCallback(async () => {
     if (!selectedCraneId) {
       setHistoryData([])
       return
@@ -40,22 +40,46 @@ export default function Monitor() {
     const end = new Date()
     const start = new Date(end.getTime() - 5 * 60 * 1000)
     const fmt = (d: Date) => d.toISOString()
-    fetch(
-      `/api/sensor-data/history?craneId=${selectedCraneId}&startTime=${fmt(start)}&endTime=${fmt(end)}&interval=1m&aggregated=true`
-    )
-      .then(r => r.json())
-      .then(json => {
-        if (json.success) {
-          const pivoted: Record<string, any> = {}
-          for (const d of json.data) {
-            if (!pivoted[d.timestamp]) pivoted[d.timestamp] = { time: d.timestamp }
-            pivoted[d.timestamp][d.sensor_type] = d.avg_value
-          }
-          setHistoryData(Object.values(pivoted))
+    try {
+      const res = await fetch(
+        `/api/sensor-data/history?craneId=${selectedCraneId}&startTime=${fmt(start)}&endTime=${fmt(end)}&interval=1m&aggregated=true`
+      )
+      const json = await res.json()
+      if (json.success) {
+        const pivoted: Record<string, any> = {}
+        for (const d of json.data) {
+          if (!pivoted[d.timestamp]) pivoted[d.timestamp] = { time: d.timestamp }
+          pivoted[d.timestamp][d.sensor_type] = d.avg_value
         }
-      })
-      .catch(() => {})
+        setHistoryData(Object.values(pivoted))
+      }
+    } catch (e) {
+      console.error('Failed to load history data:', e)
+    }
   }, [selectedCraneId])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        fetchCranes(),
+        fetchCraneStats(),
+        fetchLatestSensorData(),
+        fetchActiveAlerts(),
+        loadHistoryData(),
+      ])
+    } finally {
+      setTimeout(() => setRefreshing(false), 500)
+    }
+  }, [fetchCranes, fetchCraneStats, fetchLatestSensorData, fetchActiveAlerts, loadHistoryData])
+
+  const selectedCrane = cranes.find(c => c.id === selectedCraneId)
+  const craneAlerts = activeAlerts.filter(a => a.crane_id === selectedCraneId)
+  const latestAlerts = activeAlerts.slice(0, 10)
+
+  useEffect(() => {
+    loadHistoryData()
+  }, [loadHistoryData])
 
   const getSensorValue = (type: string) => {
     const sensors = sensorData[selectedCraneId || ''] || []
@@ -74,7 +98,24 @@ export default function Monitor() {
     : []
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-2xl font-bold text-text-primary">实时监控</h2>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleRefresh()
+          }}
+          className="btn-secondary flex items-center gap-2"
+          disabled={refreshing}
+        >
+          <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+          刷新数据
+        </button>
+      </div>
+
       <div className="flex flex-1 min-h-0 gap-4">
         <div
           className={cn(

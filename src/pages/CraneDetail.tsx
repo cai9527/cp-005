@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useCraneStore } from '@/stores/craneStore'
 import { useAlertStore } from '@/stores/alertStore'
 import { useParams, useNavigate } from 'react-router-dom'
 import GaugeChart from '@/components/GaugeChart'
 import StatusBadge from '@/components/StatusBadge'
 import AlertBadge from '@/components/AlertBadge'
-import { ArrowLeft, MapPin, Calendar, Wrench, Settings, Activity } from 'lucide-react'
+import { ArrowLeft, MapPin, Calendar, Wrench, Settings, Activity, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const SENSOR_NAMES: Record<string, string> = {
@@ -40,9 +40,38 @@ const statusColor = {
 export default function CraneDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { cranes, sensorData, fetchLatestByCrane } = useCraneStore()
-  const { activeAlerts } = useAlertStore()
+  const { cranes, sensorData, fetchLatestByCrane, fetchCranes } = useCraneStore()
+  const { activeAlerts, fetchActiveAlerts } = useAlertStore()
   const [sensors, setSensors] = useState<SensorInfo[]>([])
+  const [refreshing, setRefreshing] = useState(false)
+
+  const fetchSensors = useCallback(async () => {
+    if (!id) return
+    try {
+      const res = await fetch(`/api/cranes/${id}`)
+      const json = await res.json()
+      if (json.success && json.data.sensors) {
+        setSensors(json.data.sensors)
+      }
+    } catch (e) {
+      console.error('Failed to fetch sensors:', e)
+    }
+  }, [id])
+
+  const handleRefresh = useCallback(async () => {
+    if (!id) return
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        fetchCranes(),
+        fetchLatestByCrane(id),
+        fetchActiveAlerts(),
+        fetchSensors(),
+      ])
+    } finally {
+      setTimeout(() => setRefreshing(false), 500)
+    }
+  }, [id, fetchCranes, fetchLatestByCrane, fetchActiveAlerts, fetchSensors])
 
   const crane = cranes.find((c) => c.id === id)
   const data = id ? sensorData[id] || [] : []
@@ -51,15 +80,8 @@ export default function CraneDetail() {
   useEffect(() => {
     if (!id) return
     fetchLatestByCrane(id)
-    fetch(`/api/cranes/${id}`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success && json.data.sensors) {
-          setSensors(json.data.sensors)
-        }
-      })
-      .catch(() => {})
-  }, [id, fetchLatestByCrane])
+    fetchSensors()
+  }, [id, fetchLatestByCrane, fetchSensors])
 
   useEffect(() => {
     if (!id) return
@@ -78,21 +100,36 @@ export default function CraneDetail() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => navigate('/cranes')}
-          className="p-2 rounded-lg hover:bg-bg-tertiary transition-colors text-text-secondary hover:text-text-primary"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="flex items-center gap-3">
-          <h2 className="font-display text-2xl font-bold text-text-primary">{crane.name}</h2>
-          <span className="bg-bg-tertiary px-2 py-0.5 rounded text-xs text-text-secondary">
-            {crane.model}
-          </span>
-          <StatusBadge status={crane.status} />
+    <div className="flex flex-col h-full gap-4 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/cranes')}
+            className="p-2 rounded-lg hover:bg-bg-tertiary transition-colors text-text-secondary hover:text-text-primary"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-3">
+            <h2 className="font-display text-2xl font-bold text-text-primary">{crane.name}</h2>
+            <span className="bg-bg-tertiary px-2 py-0.5 rounded text-xs text-text-secondary">
+              {crane.model}
+            </span>
+            <StatusBadge status={crane.status} />
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleRefresh()
+          }}
+          className="btn-secondary flex items-center gap-2"
+          disabled={refreshing}
+        >
+          <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+          刷新
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

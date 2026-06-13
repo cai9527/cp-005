@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   AlertTriangle, Clock, CheckCircle, XCircle, Plus, Settings,
-  Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
+  Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react'
 import { useAlertStore, type Alert, type AlertRule } from '@/stores/alertStore'
 import { useCraneStore } from '@/stores/craneStore'
@@ -55,6 +55,24 @@ export default function Alerts() {
   const [craneFilter, setCraneFilter] = useState<string>('')
   const [showRuleModal, setShowRuleModal] = useState(false)
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const promises = [fetchAlertStats()]
+      if (activeTab === 'active') {
+        promises.push(fetchActiveAlerts())
+      } else if (activeTab === 'history') {
+        promises.push(fetchAlerts({ limit: 100 }))
+      } else if (activeTab === 'rules') {
+        promises.push(fetchAlertRules())
+      }
+      await Promise.all(promises)
+    } finally {
+      setTimeout(() => setRefreshing(false), 500)
+    }
+  }, [activeTab, fetchAlertStats, fetchActiveAlerts, fetchAlerts, fetchAlertRules])
   const [ruleForm, setRuleForm] = useState({
     name: '',
     crane_id: 'all',
@@ -150,12 +168,27 @@ export default function Alerts() {
     <div className="flex flex-col h-full gap-4 overflow-y-auto">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-2xl font-bold text-text-primary">预警中心</h2>
-        {activeTab === 'rules' && (
-          <button onClick={openCreateRule} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            新建规则
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleRefresh()
+            }}
+            className="btn-secondary flex items-center gap-2"
+            disabled={refreshing}
+          >
+            <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+            刷新
           </button>
-        )}
+          {activeTab === 'rules' && (
+            <button onClick={openCreateRule} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              新建规则
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-3">

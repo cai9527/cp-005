@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { TrendingUp, Shield, Clock, Activity, BarChart3, AlertTriangle, ThermometerSun } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { TrendingUp, Shield, Clock, Activity, BarChart3, AlertTriangle, ThermometerSun, RefreshCw } from 'lucide-react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -55,6 +55,49 @@ export default function Analysis() {
   const [dailyData, setDailyData] = useState<DailyStat[]>([])
   const [sensorType, setSensorType] = useState<string>('load')
   const [trendData, setTrendData] = useState<TrendPoint[]>([])
+  const [refreshing, setRefreshing] = useState(false)
+
+  const fetchStats = useCallback(async () => {
+    if (!selectedCraneId) return
+    try {
+      const res = await fetch(`/api/analysis/stats/${selectedCraneId}`)
+      const json = await res.json()
+      if (json.success) setStats(json.data)
+    } catch (e) {
+      console.error('Failed to fetch stats:', e)
+    }
+  }, [selectedCraneId])
+
+  const fetchDaily = useCallback(async () => {
+    if (!selectedCraneId) return
+    try {
+      const res = await fetch(`/api/analysis/daily/${selectedCraneId}?days=${days}`)
+      const json = await res.json()
+      if (json.success) setDailyData(json.data)
+    } catch (e) {
+      console.error('Failed to fetch daily data:', e)
+    }
+  }, [selectedCraneId, days])
+
+  const fetchTrend = useCallback(async () => {
+    if (!selectedCraneId) return
+    try {
+      const res = await fetch(`/api/analysis/trend/${selectedCraneId}?sensorType=${sensorType}&hours=24`)
+      const json = await res.json()
+      if (json.success) setTrendData(json.data)
+    } catch (e) {
+      console.error('Failed to fetch trend data:', e)
+    }
+  }, [selectedCraneId, sensorType])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([fetchStats(), fetchDaily(), fetchTrend()])
+    } finally {
+      setTimeout(() => setRefreshing(false), 500)
+    }
+  }, [fetchStats, fetchDaily, fetchTrend])
 
   useEffect(() => {
     if (cranes.length === 0) fetchCranes()
@@ -67,28 +110,16 @@ export default function Analysis() {
   }, [cranes])
 
   useEffect(() => {
-    if (!selectedCraneId) return
-    fetch(`/api/analysis/stats/${selectedCraneId}`)
-      .then(r => r.json())
-      .then(json => json.success && setStats(json.data))
-      .catch(() => {})
-  }, [selectedCraneId])
+    fetchStats()
+  }, [fetchStats])
 
   useEffect(() => {
-    if (!selectedCraneId) return
-    fetch(`/api/analysis/daily/${selectedCraneId}?days=${days}`)
-      .then(r => r.json())
-      .then(json => json.success && setDailyData(json.data))
-      .catch(() => {})
-  }, [selectedCraneId, days])
+    fetchDaily()
+  }, [fetchDaily])
 
   useEffect(() => {
-    if (!selectedCraneId) return
-    fetch(`/api/analysis/trend/${selectedCraneId}?sensorType=${sensorType}&hours=24`)
-      .then(r => r.json())
-      .then(json => json.success && setTrendData(json.data))
-      .catch(() => {})
-  }, [selectedCraneId, sensorType])
+    fetchTrend()
+  }, [fetchTrend])
 
   const safetyColor = (score: number) =>
     score >= 80 ? 'text-accent-secondary' : score >= 60 ? 'text-accent-warning' : 'text-accent-danger'
@@ -125,6 +156,23 @@ export default function Analysis() {
 
   return (
     <div className="flex flex-col h-full gap-4 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-2xl font-bold text-text-primary">数据分析</h2>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleRefresh()
+          }}
+          className="btn-secondary flex items-center gap-2"
+          disabled={refreshing}
+        >
+          <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+          刷新
+        </button>
+      </div>
+
       <div className="flex items-center gap-3">
         <select
           value={selectedCraneId}

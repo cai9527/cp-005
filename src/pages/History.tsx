@@ -161,7 +161,12 @@ export default function History() {
         <h2 className="font-display text-2xl font-bold text-text-primary">历史数据</h2>
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchHistoryData}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              fetchHistoryData()
+            }}
             className="btn-secondary flex items-center gap-2"
             disabled={loading}
           >

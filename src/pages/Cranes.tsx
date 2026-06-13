@@ -1,15 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useCraneStore } from '@/stores/craneStore'
 import StatusBadge from '@/components/StatusBadge'
 import { useNavigate } from 'react-router-dom'
-import { Search, Filter, Plus, MapPin, Calendar, Wrench } from 'lucide-react'
+import { Search, Filter, Plus, MapPin, Calendar, Wrench, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function Cranes() {
   const navigate = useNavigate()
-  const { cranes, fetchCranes } = useCraneStore()
+  const { cranes, fetchCranes, fetchCraneStats } = useCraneStore()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([fetchCranes(), fetchCraneStats()])
+    } finally {
+      setTimeout(() => setRefreshing(false), 500)
+    }
+  }, [fetchCranes, fetchCraneStats])
 
   useEffect(() => {
     fetchCranes()
@@ -22,13 +32,28 @@ export default function Cranes() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full gap-4 overflow-y-auto">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-2xl font-bold text-text-primary">塔机管理</h2>
-        <button className="btn-primary flex items-center gap-2" disabled>
-          <Plus className="w-4 h-4" />
-          添加塔机
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleRefresh()
+            }}
+            className="btn-secondary flex items-center gap-2"
+            disabled={refreshing}
+          >
+            <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+            刷新
+          </button>
+          <button className="btn-primary flex items-center gap-2" disabled>
+            <Plus className="w-4 h-4" />
+            添加塔机
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
