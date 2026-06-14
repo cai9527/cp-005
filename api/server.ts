@@ -4,6 +4,7 @@
 import app from './app.js';
 import { wsService } from './services/wsService.js';
 import { sensorSimulatorService } from './services/sensorSimulatorService.js';
+import { deviceStatusService } from './services/deviceStatusService.js';
 
 /**
  * start server with port
@@ -16,6 +17,7 @@ const server = app.listen(PORT, () => {
   wsService.init(server);
 
   sensorSimulatorService.init();
+  deviceStatusService.init();
 });
 
 /**
@@ -24,6 +26,7 @@ const server = app.listen(PORT, () => {
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received');
   sensorSimulatorService.stop();
+  deviceStatusService.stopMonitoring();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -33,6 +36,7 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('SIGINT signal received');
   sensorSimulatorService.stop();
+  deviceStatusService.stopMonitoring();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

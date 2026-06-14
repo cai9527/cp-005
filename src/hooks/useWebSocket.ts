@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useCraneStore } from '@/stores/craneStore'
 import { useAlertStore } from '@/stores/alertStore'
+import { useDeviceStatusStore } from '@/stores/deviceStatusStore'
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
@@ -9,6 +10,7 @@ export function useWebSocket() {
   const updateCraneStatus = useCraneStore((s) => s.updateCraneStatus)
   const addRealtimeAlert = useAlertStore((s) => s.addRealtimeAlert)
   const updateAlertStatus = useAlertStore((s) => s.updateAlertStatus)
+  const updateHeartbeatRealtime = useDeviceStatusStore((s) => s.updateHeartbeatRealtime)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
@@ -44,6 +46,12 @@ export function useWebSocket() {
           case 'alert_status':
             updateAlertStatus(msg.payload.id, msg.payload.status)
             break
+          case 'device_offline':
+            updateHeartbeatRealtime(msg.payload.craneId, {
+              status: 'offline',
+              updated_at: new Date().toISOString(),
+            })
+            break
         }
       } catch (e) {
         console.error('[WS] Message parse error:', e)
@@ -58,7 +66,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       ws.close()
     }
-  }, [updateSensorData, updateCraneStatus, addRealtimeAlert, updateAlertStatus])
+  }, [updateSensorData, updateCraneStatus, addRealtimeAlert, updateAlertStatus, updateHeartbeatRealtime])
 
   useEffect(() => {
     connect()

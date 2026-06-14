@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server as HttpServer } from 'http'
 
-export type WSMessageType = 'sensor_update' | 'alert' | 'status_change' | 'welcome'
+export type WSMessageType = 'sensor_update' | 'alert' | 'status_change' | 'welcome' | 'device_offline' | 'rotation_update' | 'alert_status'
 
 export interface WSMessage {
   type: WSMessageType

@@ -165,6 +165,60 @@ function initializeDatabase(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_operation_logs_user ON operation_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_operation_logs_action ON operation_logs(action);
     CREATE INDEX IF NOT EXISTS idx_operation_logs_timestamp ON operation_logs(timestamp);
+
+    CREATE TABLE IF NOT EXISTS device_heartbeat (
+      id TEXT PRIMARY KEY,
+      crane_id TEXT NOT NULL REFERENCES cranes(id) ON DELETE CASCADE,
+      last_heartbeat_at TEXT NOT NULL,
+      heartbeat_interval_ms INTEGER NOT NULL DEFAULT 25000,
+      status TEXT NOT NULL DEFAULT 'online',
+      reconnect_count INTEGER NOT NULL DEFAULT 0,
+      latency_ms REAL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_device_heartbeat_crane ON device_heartbeat(crane_id);
+    CREATE INDEX IF NOT EXISTS idx_device_heartbeat_status ON device_heartbeat(status);
+
+    CREATE TABLE IF NOT EXISTS device_status_log (
+      id TEXT PRIMARY KEY,
+      crane_id TEXT NOT NULL REFERENCES cranes(id) ON DELETE CASCADE,
+      old_status TEXT NOT NULL,
+      new_status TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      timestamp TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_device_status_log_crane ON device_status_log(crane_id);
+    CREATE INDEX IF NOT EXISTS idx_device_status_log_timestamp ON device_status_log(timestamp);
+
+    CREATE TABLE IF NOT EXISTS rotation_simulation (
+      id TEXT PRIMARY KEY,
+      crane_id TEXT NOT NULL REFERENCES cranes(id) ON DELETE CASCADE,
+      angular_velocity REAL NOT NULL DEFAULT 0.6,
+      direction TEXT NOT NULL DEFAULT 'cw',
+      center_x REAL NOT NULL DEFAULT 50,
+      center_y REAL NOT NULL DEFAULT 50,
+      radius REAL NOT NULL DEFAULT 30,
+      status TEXT NOT NULL DEFAULT 'stopped',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rotation_trajectory (
+      id TEXT PRIMARY KEY,
+      simulation_id TEXT NOT NULL REFERENCES rotation_simulation(id) ON DELETE CASCADE,
+      angle REAL NOT NULL,
+      pos_x REAL NOT NULL,
+      pos_y REAL NOT NULL,
+      angular_velocity REAL NOT NULL,
+      timestamp TEXT NOT NULL,
+      elapsed_ms INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rotation_trajectory_sim ON rotation_trajectory(simulation_id);
+    CREATE INDEX IF NOT EXISTS idx_rotation_trajectory_time ON rotation_trajectory(timestamp);
   `)
 
   migrateCranesTable(database)
