@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Radio, Activity, Construction, Database, AlertTriangle, BarChart3,
   ChevronLeft, ChevronRight, Minus, Plus, Maximize2, Link, Users,
-  Wifi, RotateCw,
+  Wifi, RotateCw, Shield,
 } from 'lucide-react'
 import {
   useUIStore,
@@ -22,6 +22,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: '/', label: '实时监控', icon: Activity, roles: ['admin', 'user'] },
+  { path: '/collision-monitor', label: '防碰撞监控', icon: Shield, roles: ['admin', 'user'] },
   { path: '/device-status', label: '在线状态', icon: Wifi, roles: ['admin', 'user'] },
   { path: '/rotation-simulator', label: '旋转模拟', icon: RotateCw, roles: ['admin'] },
   { path: '/cranes', label: '塔机管理', icon: Construction, roles: ['admin'] },

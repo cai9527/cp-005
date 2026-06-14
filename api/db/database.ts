@@ -219,6 +219,57 @@ function initializeDatabase(database: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_rotation_trajectory_sim ON rotation_trajectory(simulation_id);
     CREATE INDEX IF NOT EXISTS idx_rotation_trajectory_time ON rotation_trajectory(timestamp);
+
+    CREATE TABLE IF NOT EXISTS collision_rules (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      safe_distance REAL NOT NULL DEFAULT 5,
+      risk_velocity REAL NOT NULL DEFAULT 1,
+      warning_distance_ratio REAL NOT NULL DEFAULT 1.5,
+      critical_distance_ratio REAL NOT NULL DEFAULT 1.2,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS collision_alerts (
+      id TEXT PRIMARY KEY,
+      crane1_id TEXT NOT NULL REFERENCES cranes(id) ON DELETE CASCADE,
+      crane2_id TEXT NOT NULL REFERENCES cranes(id) ON DELETE CASCADE,
+      level TEXT NOT NULL,
+      distance REAL NOT NULL,
+      relative_velocity REAL NOT NULL,
+      approach_angle REAL,
+      message TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      resolved_by TEXT,
+      resolved_at TEXT,
+      crane1_pos_x REAL,
+      crane1_pos_y REAL,
+      crane2_pos_x REAL,
+      crane2_pos_y REAL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collision_alerts_status ON collision_alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_collision_alerts_crane1 ON collision_alerts(crane1_id);
+    CREATE INDEX IF NOT EXISTS idx_collision_alerts_crane2 ON collision_alerts(crane2_id);
+    CREATE INDEX IF NOT EXISTS idx_collision_alerts_timestamp ON collision_alerts(timestamp);
+
+    CREATE TABLE IF NOT EXISTS device_position_snapshots (
+      id TEXT PRIMARY KEY,
+      crane_id TEXT NOT NULL REFERENCES cranes(id) ON DELETE CASCADE,
+      pos_x REAL NOT NULL,
+      pos_y REAL NOT NULL,
+      rotation REAL NOT NULL,
+      radius REAL NOT NULL,
+      velocity_x REAL,
+      velocity_y REAL,
+      timestamp TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_position_snapshots_crane ON device_position_snapshots(crane_id);
+    CREATE INDEX IF NOT EXISTS idx_position_snapshots_timestamp ON device_position_snapshots(timestamp);
   `)
 
   migrateCranesTable(database)
@@ -263,6 +314,30 @@ function migrateCranesTable(database: Database.Database): void {
 function seedInitialData(database: Database.Database): void {
   seedCraneData(database)
   seedUserData(database)
+  seedCollisionRules(database)
+}
+
+function seedCollisionRules(database: Database.Database): void {
+  const ruleCount = database.prepare('SELECT COUNT(*) as count FROM collision_rules').get() as { count: number }
+  if (ruleCount.count > 0) return
+
+  const insertRule = database.prepare(`
+    INSERT INTO collision_rules (id, name, safe_distance, risk_velocity, warning_distance_ratio, critical_distance_ratio, enabled, created_at, updated_at)
+    VALUES (@id, @name, @safe_distance, @risk_velocity, @warning_distance_ratio, @critical_distance_ratio, @enabled, @created_at, @updated_at)
+  `)
+
+  const now = new Date().toISOString()
+  insertRule.run({
+    id: uuidv4(),
+    name: '默认防碰撞规则',
+    safe_distance: 5,
+    risk_velocity: 1,
+    warning_distance_ratio: 1.5,
+    critical_distance_ratio: 1.2,
+    enabled: 1,
+    created_at: now,
+    updated_at: now,
+  })
 }
 
 function seedCraneData(database: Database.Database): void {

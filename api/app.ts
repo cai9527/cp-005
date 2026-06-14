@@ -21,6 +21,7 @@ import simulatorRoutes from './routes/simulator.js'
 import deviceStatusRoutes from './routes/deviceStatus.js'
 import rotationSimulatorRoutes from './routes/rotationSimulator.js'
 import userRoutes from './routes/users.js'
+import collisionRoutes from './routes/collision.js'
 import { sanitizeMiddleware } from './middleware/sanitize.js'
 import { securityHeaders, rateLimitMiddleware } from './middleware/security.js'
 
@@ -54,6 +55,7 @@ app.use('/api/analysis', analysisRoutes)
 app.use('/api/simulator', simulatorRoutes)
 app.use('/api/device-status', deviceStatusRoutes)
 app.use('/api/rotation-simulator', rotationSimulatorRoutes)
+app.use('/api/collision', collisionRoutes)
 
 /**
  * health

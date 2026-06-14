@@ -1,16 +1,28 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useCraneStore } from '@/stores/craneStore'
 import { useAlertStore } from '@/stores/alertStore'
 import { useDeviceStatusStore } from '@/stores/deviceStatusStore'
+import { useCollisionStore } from '@/stores/collisionStore'
+
+export interface WSMessage {
+  type: string
+  payload: any
+  timestamp: string
+}
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const [lastMessage, setLastMessage] = useState<WSMessage | null>(null)
   const updateSensorData = useCraneStore((s) => s.updateSensorData)
   const updateCraneStatus = useCraneStore((s) => s.updateCraneStatus)
   const addRealtimeAlert = useAlertStore((s) => s.addRealtimeAlert)
   const updateAlertStatus = useAlertStore((s) => s.updateAlertStatus)
   const updateHeartbeatRealtime = useDeviceStatusStore((s) => s.updateHeartbeatRealtime)
+  const addRealtimeCollisionAlert = useCollisionStore((s) => s.addRealtimeCollisionAlert)
+  const updateCollisionAlertStatus = useCollisionStore((s) => s.updateCollisionAlertStatus)
+  const updateRiskPairs = useCollisionStore((s) => s.updateRiskPairs)
+  const fetchOverallRisk = useCollisionStore((s) => s.fetchOverallRisk)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
@@ -27,7 +39,9 @@ export function useWebSocket() {
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data)
+        const msg = JSON.parse(event.data) as WSMessage
+        setLastMessage(msg)
+
         switch (msg.type) {
           case 'sensor_update':
             updateSensorData(
@@ -52,6 +66,21 @@ export function useWebSocket() {
               updated_at: new Date().toISOString(),
             })
             break
+          case 'collision_alert':
+            if (msg.payload.alerts) {
+              msg.payload.alerts.forEach((alert: any) => {
+                addRealtimeCollisionAlert(alert)
+              })
+            }
+            if (msg.payload.riskPairs) {
+              updateRiskPairs(msg.payload.riskPairs)
+            }
+            fetchOverallRisk()
+            break
+          case 'collision_alert_status':
+            updateCollisionAlertStatus(msg.payload.id, msg.payload.status)
+            fetchOverallRisk()
+            break
         }
       } catch (e) {
         console.error('[WS] Message parse error:', e)
@@ -66,7 +95,11 @@ export function useWebSocket() {
     ws.onerror = () => {
       ws.close()
     }
-  }, [updateSensorData, updateCraneStatus, addRealtimeAlert, updateAlertStatus, updateHeartbeatRealtime])
+  }, [
+    updateSensorData, updateCraneStatus, addRealtimeAlert, updateAlertStatus,
+    updateHeartbeatRealtime, addRealtimeCollisionAlert, updateCollisionAlertStatus,
+    updateRiskPairs, fetchOverallRisk
+  ])
 
   useEffect(() => {
     connect()
@@ -75,4 +108,6 @@ export function useWebSocket() {
       if (wsRef.current) wsRef.current.close()
     }
   }, [connect])
+
+  return { lastMessage }
 }

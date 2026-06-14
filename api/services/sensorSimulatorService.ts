@@ -1,6 +1,7 @@
 import { craneRepository, type Crane } from '../repositories/craneRepository.js'
 import { sensorDataService } from './sensorDataService.js'
 import { alertService } from './alertService.js'
+import { collisionService } from './collisionService.js'
 
 interface SensorState {
   load: number
@@ -92,6 +93,7 @@ class SensorSimulatorService {
   private tick(): void {
     const now = Date.now()
     const batch: Array<{ craneId: string; sensorType: string; value: number }> = []
+    const positionUpdates: Array<{ craneId: string; rotation: number; radius: number }> = []
 
     for (const [craneId, state] of this.simStates) {
       this.updateWorkCycle(state, now)
@@ -103,9 +105,17 @@ class SensorSimulatorService {
       batch.push({ craneId, sensorType: 'height', value: state.sensors.height })
       batch.push({ craneId, sensorType: 'rotation', value: state.sensors.rotation })
       batch.push({ craneId, sensorType: 'wind', value: state.sensors.wind })
+
+      positionUpdates.push({
+        craneId,
+        rotation: state.sensors.rotation,
+        radius: state.sensors.radius,
+      })
     }
 
     sensorDataService.ingestBatch(batch)
+    collisionService.batchUpdatePositions(positionUpdates)
+    collisionService.detectCollisions()
   }
 
   private updateWorkCycle(state: CraneSimState, now: number): void {
