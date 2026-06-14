@@ -6,7 +6,10 @@ import CraneDetail from "@/pages/CraneDetail";
 import History from "@/pages/History";
 import Alerts from "@/pages/Alerts";
 import Analysis from "@/pages/Analysis";
+import Users from "@/pages/Users";
+import Profile from "@/pages/Profile";
 import Login from "@/pages/Login";
+import Register from "@/pages/Register";
 import { useAuthStore, type UserRole } from "@/stores/authStore";
 
 interface RouteConfig {
@@ -22,6 +25,8 @@ const routes: RouteConfig[] = [
   { path: "history", element: <History />, roles: ["admin", "user"] },
   { path: "alerts", element: <Alerts />, roles: ["admin", "user"] },
   { path: "analysis", element: <Analysis />, roles: ["admin"] },
+  { path: "users", element: <Users />, roles: ["admin"] },
+  { path: "profile", element: <Profile />, roles: ["admin", "user"] },
 ]
 
 function ProtectedLayout() {
@@ -43,6 +48,7 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/" element={<ProtectedLayout />}>
           {routes.map((config) => (
             <Route

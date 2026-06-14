@@ -18,6 +18,9 @@ import alertRoutes from './routes/alerts.js'
 import alertRuleRoutes from './routes/alertRules.js'
 import analysisRoutes from './routes/analysis.js'
 import simulatorRoutes from './routes/simulator.js'
+import userRoutes from './routes/users.js'
+import { sanitizeMiddleware } from './middleware/sanitize.js'
+import { securityHeaders, rateLimitMiddleware } from './middleware/security.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -29,13 +32,18 @@ dotenv.config()
 const app: express.Application = express()
 
 app.use(cors())
+app.use(securityHeaders)
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(sanitizeMiddleware)
+app.use('/api/auth/login', rateLimitMiddleware(10, 15 * 60 * 1000))
+app.use('/api/auth/register', rateLimitMiddleware(5, 60 * 60 * 1000))
 
 /**
  * API Routes
  */
 app.use('/api/auth', authRoutes)
+app.use('/api/users', userRoutes)
 app.use('/api/cranes', craneRoutes)
 app.use('/api/sensor-data', sensorDataRoutes)
 app.use('/api/alerts', alertRoutes)

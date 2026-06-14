@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Radio, Activity, Construction, Database, AlertTriangle, BarChart3,
-  ChevronLeft, ChevronRight, Minus, Plus, Maximize2, Link,
+  ChevronLeft, ChevronRight, Minus, Plus, Maximize2, Link, Users,
 } from 'lucide-react'
 import {
   useUIStore,
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { path: '/history', label: '历史数据', icon: Database, roles: ['admin', 'user'] },
   { path: '/alerts', label: '预警中心', icon: AlertTriangle, roles: ['admin', 'user'] },
   { path: '/analysis', label: '数据分析', icon: BarChart3, roles: ['admin'] },
+  { path: '/users', label: '用户管理', icon: Users, roles: ['admin'] },
 ]
 
 const widthOrder: SidebarWidthMode[] = ['collapsed', 'compact', 'normal', 'wide']

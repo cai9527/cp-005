@@ -16,6 +16,8 @@ const routeNameMap: Record<string, string> = {
   '/history': '历史数据',
   '/alerts': '预警中心',
   '/analysis': '数据分析',
+  '/users': '用户管理',
+  '/profile': '个人中心',
 }
 
 function formatTime(date: Date): string {
@@ -558,7 +560,18 @@ export default function Header() {
                   </div>
                 </div>
               </div>
-              <div className="p-1.5">
+              <div className="p-1.5 space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUserMenu(false)
+                    navigate('/profile')
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-text-primary hover:bg-bg-tertiary transition-colors"
+                >
+                  <User className="w-4 h-4" />
+                  个人中心
+                </button>
                 <button
                   type="button"
                   onClick={handleLogout}

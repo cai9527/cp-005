@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -93,10 +94,64 @@ function initializeDatabase(database: Database.Database): void {
       level TEXT NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      role TEXT NOT NULL DEFAULT 'user',
+      status TEXT NOT NULL DEFAULT 'active',
+      login_attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_login_at TEXT,
+      last_login_ip TEXT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+
+    CREATE TABLE IF NOT EXISTS login_audit (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      ip TEXT,
+      success INTEGER NOT NULL DEFAULT 0,
+      timestamp TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_login_audit_username ON login_audit(username);
+    CREATE INDEX IF NOT EXISTS idx_login_audit_timestamp ON login_audit(timestamp);
+
+    CREATE TABLE IF NOT EXISTS operation_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      username TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      detail TEXT,
+      ip TEXT,
+      timestamp TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_operation_logs_user ON operation_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_operation_logs_action ON operation_logs(action);
+    CREATE INDEX IF NOT EXISTS idx_operation_logs_timestamp ON operation_logs(timestamp);
   `)
 }
 
 function seedInitialData(database: Database.Database): void {
+  seedCraneData(database)
+  seedUserData(database)
+}
+
+function seedCraneData(database: Database.Database): void {
   const craneCount = database.prepare('SELECT COUNT(*) as count FROM cranes').get() as { count: number }
   if (craneCount.count > 0) return
 
@@ -233,6 +288,48 @@ function seedInitialData(database: Database.Database): void {
   })
 
   tx()
+}
+
+function seedUserData(database: Database.Database): void {
+  const userCount = database.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
+  if (userCount.count === 0) {
+    const insertUser = database.prepare(`
+      INSERT INTO users (id, username, password, salt, display_name, email, phone, role, status, created_at, updated_at)
+      VALUES (@id, @username, @password, @salt, @display_name, @email, @phone, @role, @status, @created_at, @updated_at)
+    `)
+    const now = new Date().toISOString()
+    const adminSalt = crypto.randomBytes(16).toString('hex')
+    const adminHash = crypto.pbkdf2Sync('admin123', adminSalt, 10000, 64, 'sha512').toString('hex')
+    const userSalt = crypto.randomBytes(16).toString('hex')
+    const userHash = crypto.pbkdf2Sync('user123', userSalt, 10000, 64, 'sha512').toString('hex')
+
+    insertUser.run({
+      id: uuidv4(),
+      username: 'admin',
+      password: adminHash,
+      salt: adminSalt,
+      display_name: '系统管理员',
+      email: 'admin@example.com',
+      phone: '13800000001',
+      role: 'admin',
+      status: 'active',
+      created_at: now,
+      updated_at: now,
+    })
+    insertUser.run({
+      id: uuidv4(),
+      username: 'user',
+      password: userHash,
+      salt: userSalt,
+      display_name: '普通用户',
+      email: 'user@example.com',
+      phone: '13800000002',
+      role: 'user',
+      status: 'active',
+      created_at: now,
+      updated_at: now,
+    })
+  }
 }
 
 export default getDatabase
