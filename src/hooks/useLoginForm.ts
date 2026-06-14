@@ -11,6 +11,8 @@ export interface LoginFormState {
   touched: { username: boolean; password: boolean }
   accountType: UserRole
   autoFilled: boolean
+  passwordValidated: boolean
+  passwordValidationResult: 'idle' | 'success' | 'error'
 }
 
 export interface UseLoginFormReturn {
@@ -22,6 +24,7 @@ export interface UseLoginFormReturn {
   handleUsernameBlur: () => void
   handlePasswordBlur: () => void
   validateAll: () => boolean
+  validatePasswordNow: () => boolean
   reset: () => void
   setAccountType: (role: UserRole, username: string, password: string) => void
 }
@@ -36,6 +39,8 @@ const initialState: LoginFormState = {
   touched: { username: false, password: false },
   accountType: 'admin',
   autoFilled: false,
+  passwordValidated: false,
+  passwordValidationResult: 'idle',
 }
 
 export const validateUsername = (value: string): string => {
@@ -50,7 +55,52 @@ export const validateUsername = (value: string): string => {
 export const validatePassword = (value: string): string => {
   if (!value) return '请输入密码'
   if (value.length < 6) return '密码至少6个字符'
+  if (value.length > 32) return '密码不超过32个字符'
+  if (!/[a-z]/.test(value)) return '密码需包含小写字母'
+  if (!/[A-Z]/.test(value)) return '密码需包含大写字母'
+  if (!/[0-9]/.test(value)) return '密码需包含数字'
   return ''
+}
+
+export interface PasswordStrength {
+  score: number
+  label: string
+  color: string
+  requirements: { label: string; met: boolean }[]
+}
+
+export const calculatePasswordStrength = (value: string): PasswordStrength => {
+  const requirements = [
+    { label: '至少6个字符', met: value.length >= 6 },
+    { label: '不超过32个字符', met: value.length <= 32 },
+    { label: '包含小写字母', met: /[a-z]/.test(value) },
+    { label: '包含大写字母', met: /[A-Z]/.test(value) },
+    { label: '包含数字', met: /[0-9]/.test(value) },
+    { label: '包含特殊字符', met: /[!@#$%^&*(),.?":{}|<>]/.test(value) },
+  ]
+
+  const metCount = requirements.filter((r) => r.met).length
+  let score = 0
+  let label = '弱'
+  let color = 'bg-accent-danger'
+
+  if (metCount >= 3) {
+    score = 1
+    label = '一般'
+    color = 'bg-accent-warning'
+  }
+  if (metCount >= 4) {
+    score = 2
+    label = '中等'
+    color = 'bg-accent-primary'
+  }
+  if (metCount >= 5) {
+    score = 3
+    label = '强'
+    color = 'bg-accent-secondary'
+  }
+
+  return { score, label, color, requirements }
 }
 
 export function useLoginForm(initialUsername = '', initialRemember = false): UseLoginFormReturn {
@@ -76,6 +126,8 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
       password: value,
       passwordError: prev.touched.password ? validatePassword(value) : '',
       autoFilled: false,
+      passwordValidated: false,
+      passwordValidationResult: 'idle',
     }))
   }, [])
 
@@ -106,14 +158,30 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
   const validateAll = useCallback((): boolean => {
     const uErr = validateUsername(state.username)
     const pErr = validatePassword(state.password)
+    const pValid = !pErr
     setState((prev) => ({
       ...prev,
       touched: { username: true, password: true },
       usernameError: uErr,
       passwordError: pErr,
+      passwordValidated: true,
+      passwordValidationResult: pValid ? 'success' : 'error',
     }))
     return !uErr && !pErr
   }, [state.username, state.password])
+
+  const validatePasswordNow = useCallback((): boolean => {
+    const pErr = validatePassword(state.password)
+    const pValid = !pErr
+    setState((prev) => ({
+      ...prev,
+      touched: { ...prev.touched, password: true },
+      passwordError: pErr,
+      passwordValidated: true,
+      passwordValidationResult: pValid ? 'success' : 'error',
+    }))
+    return pValid
+  }, [state.password])
 
   const reset = useCallback(() => {
     setState(initialState)
@@ -129,6 +197,8 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
       passwordError: '',
       touched: { username: false, password: false },
       autoFilled: true,
+      passwordValidated: false,
+      passwordValidationResult: 'idle',
     }))
   }, [])
 
@@ -141,6 +211,7 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
     handleUsernameBlur,
     handlePasswordBlur,
     validateAll,
+    validatePasswordNow,
     reset,
     setAccountType,
   }

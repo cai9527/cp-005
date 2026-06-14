@@ -7,5 +7,14 @@ export { default as ErrorAlert } from './ErrorAlert'
 export { default as LoginHeader } from './LoginHeader'
 export { default as AccountTypeSelector, ACCOUNT_OPTIONS } from './AccountTypeSelector'
 export type { AccountOption } from './AccountTypeSelector'
-export { useLoginForm } from '@/hooks/useLoginForm'
-export type { LoginFormState, UseLoginFormReturn } from '@/hooks/useLoginForm'
+export {
+  useLoginForm,
+  validatePassword,
+  validateUsername,
+  calculatePasswordStrength,
+} from '@/hooks/useLoginForm'
+export type {
+  LoginFormState,
+  UseLoginFormReturn,
+  PasswordStrength,
+} from '@/hooks/useLoginForm'

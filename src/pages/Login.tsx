@@ -29,6 +29,7 @@ export default function Login() {
     handleUsernameBlur,
     handlePasswordBlur,
     validateAll,
+    validatePasswordNow,
     setAccountType,
   } = useLoginForm(
     localStorage.getItem('remembered_username') || '',
@@ -128,10 +129,13 @@ export default function Login() {
               onBlur={handlePasswordBlur}
               showPassword={state.showPassword}
               onToggleShowPassword={toggleShowPassword}
+              onValidate={validatePasswordNow}
               error={state.passwordError}
               touched={state.touched.password}
               autoComplete={state.remember ? 'current-password' : 'off'}
               autoFilled={state.autoFilled}
+              validated={state.passwordValidated}
+              validationResult={state.passwordValidationResult}
             />
 
             <div className="flex items-center justify-between">

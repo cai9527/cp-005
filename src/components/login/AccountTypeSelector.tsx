@@ -18,7 +18,7 @@ export const ACCOUNT_OPTIONS: AccountOption[] = [
     description: '拥有系统全部权限，可管理塔机、预警规则等',
     icon: Shield,
     username: 'admin',
-    password: 'admin123',
+    password: 'Admin123',
   },
   {
     role: 'user',
@@ -26,7 +26,7 @@ export const ACCOUNT_OPTIONS: AccountOption[] = [
     description: '查看监控数据和预警信息，无法修改系统配置',
     icon: User,
     username: 'user',
-    password: 'user123',
+    password: 'User123',
   },
 ]
 

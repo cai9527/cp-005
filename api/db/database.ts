@@ -299,9 +299,9 @@ function seedUserData(database: Database.Database): void {
     `)
     const now = new Date().toISOString()
     const adminSalt = crypto.randomBytes(16).toString('hex')
-    const adminHash = crypto.pbkdf2Sync('admin123', adminSalt, 10000, 64, 'sha512').toString('hex')
+    const adminHash = crypto.pbkdf2Sync('Admin123', adminSalt, 10000, 64, 'sha512').toString('hex')
     const userSalt = crypto.randomBytes(16).toString('hex')
-    const userHash = crypto.pbkdf2Sync('user123', userSalt, 10000, 64, 'sha512').toString('hex')
+    const userHash = crypto.pbkdf2Sync('User123', userSalt, 10000, 64, 'sha512').toString('hex')
 
     insertUser.run({
       id: uuidv4(),

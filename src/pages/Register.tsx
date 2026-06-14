@@ -6,11 +6,14 @@ import {
   ErrorAlert,
   UsernameInput,
   PasswordInput,
+  calculatePasswordStrength,
+  type PasswordStrength,
 } from '@/components/login'
 import {
-  User, Mail, Phone, Eye, EyeOff,
+  User, Mail, Phone, Eye, EyeOff, ShieldCheck,
   AlertTriangle, CheckCircle, ArrowLeft,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -32,6 +35,10 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [passwordValidated, setPasswordValidated] = useState(false)
+  const [passwordValidationResult, setPasswordValidationResult] = useState<'idle' | 'success' | 'error'>('idle')
+  const [passwordStrength, setPasswordStrength] = useState<PasswordStrength | null>(null)
+  const [showStrength, setShowStrength] = useState(false)
 
   const validateField = (name: string, value: string): string => {
     switch (name) {
@@ -79,7 +86,28 @@ export default function Register() {
     if (name === 'password' && touched.confirmPassword) {
       setErrors((prev) => ({ ...prev, confirmPassword: validateField('confirmPassword', form.confirmPassword) }))
     }
+    if (name === 'password') {
+      if (value) {
+        setPasswordStrength(calculatePasswordStrength(value))
+      } else {
+        setPasswordStrength(null)
+        setShowStrength(false)
+      }
+      setPasswordValidated(false)
+      setPasswordValidationResult('idle')
+    }
     if (error) setError('')
+  }
+
+  const validatePasswordNow = (): boolean => {
+    const pErr = validateField('password', form.password)
+    const pValid = !pErr
+    setTouched((prev) => ({ ...prev, password: true }))
+    setErrors((prev) => ({ ...prev, password: pErr }))
+    setPasswordValidated(true)
+    setPasswordValidationResult(pValid ? 'success' : 'error')
+    setShowStrength(true)
+    return pValid
   }
 
   const handleBlur = (name: string) => {
@@ -250,23 +278,115 @@ export default function Register() {
                   value={form.password}
                   onChange={(e) => handleChange('password', e.target.value)}
                   onBlur={() => handleBlur('password')}
+                  onFocus={() => form.password && setShowStrength(true)}
                   placeholder="6-32位，包含大小写字母和数字"
-                  className={`w-full h-11 px-3 pr-10 rounded-lg bg-bg-tertiary/50 border transition-all outline-none text-sm text-text-primary placeholder:text-text-muted/60 ${
-                    touched.password && errors.password
+                  className={cn(
+                    'w-full h-11 px-3 pr-28 rounded-lg bg-bg-tertiary/50 border transition-all outline-none text-sm text-text-primary placeholder:text-text-muted/60',
+                    (touched.password && errors.password) || (passwordValidated && passwordValidationResult === 'error')
                       ? 'border-accent-danger focus:border-accent-danger focus:ring-2 focus:ring-accent-danger/20'
-                      : 'border-border-primary focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20'
-                  }`}
+                      : passwordValidated && passwordValidationResult === 'success'
+                        ? 'border-accent-secondary focus:border-accent-secondary focus:ring-2 focus:ring-accent-secondary/30'
+                        : 'border-border-primary focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20'
+                  )}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={validatePasswordNow}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all border border-transparent',
+                      passwordValidated && passwordValidationResult === 'success'
+                        ? 'bg-accent-secondary/15 text-accent-secondary border-accent-secondary/30'
+                        : passwordValidated && passwordValidationResult === 'error'
+                          ? 'bg-accent-danger/15 text-accent-danger border-accent-danger/30'
+                          : 'bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 border-border-primary'
+                    )}
+                    aria-label="验证密码强度"
+                  >
+                    {passwordValidated && passwordValidationResult === 'success' ? (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">通过</span>
+                      </>
+                    ) : passwordValidated && passwordValidationResult === 'error' ? (
+                      <>
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">不通过</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">验证</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="p-1 text-text-muted hover:text-text-secondary transition-colors rounded"
+                    aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
+
+              {(showStrength || (touched.password && errors.password)) && passwordStrength && (
+                <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex gap-1">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            'h-1.5 flex-1 rounded-full transition-all duration-300',
+                            i <= passwordStrength.score ? passwordStrength.color : 'bg-border-primary'
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <span
+                      className={cn(
+                        'text-xs font-medium',
+                        passwordStrength.score === 0 && 'text-accent-danger',
+                        passwordStrength.score === 1 && 'text-accent-warning',
+                        passwordStrength.score === 2 && 'text-accent-primary',
+                        passwordStrength.score >= 3 && 'text-accent-secondary'
+                      )}
+                    >
+                      {passwordStrength.label}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {passwordStrength.requirements.map((req, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          'flex items-center gap-1.5 text-xs',
+                          req.met ? 'text-accent-secondary' : 'text-text-muted'
+                        )}
+                      >
+                        {req.met ? (
+                          <CheckCircle className="w-3 h-3 flex-shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3 h-3 flex-shrink-0 opacity-50" />
+                        )}
+                        <span>{req.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {touched.password && errors.password && (
-                <p className="mt-1 text-xs text-accent-danger">{errors.password}</p>
+                <p className="mt-2 text-xs text-accent-danger animate-in fade-in">{errors.password}</p>
+              )}
+
+              {passwordValidated && passwordValidationResult === 'success' && !errors.password && (
+                <p className="mt-2 text-xs text-accent-secondary animate-in fade-in flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  密码验证通过，符合要求
+                </p>
               )}
             </div>
 
