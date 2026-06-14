@@ -184,6 +184,108 @@ class CraneRepository {
     }
   }
 
+  update(id: string, data: Partial<CraneCreateInput>): Crane | undefined {
+    const existing = this.findById(id)
+    if (!existing) return undefined
+
+    const fields = Object.keys(data).filter((k) => data[k as keyof Partial<CraneCreateInput>] !== undefined)
+    if (fields.length === 0) return existing
+
+    const setClauses = fields.map((f) => `${f} = @${f}`).join(', ')
+    const params: Record<string, unknown> = { id }
+    for (const f of fields) {
+      params[f] = data[f as keyof Partial<CraneCreateInput>]
+    }
+
+    this.db.prepare(`UPDATE cranes SET ${setClauses} WHERE id = @id`).run(params)
+    return this.findById(id)
+  }
+
+  updateSensorThresholds(craneId: string, craneData: Partial<CraneCreateInput>): void {
+    const sensors = this.findSensorsByCraneId(craneId)
+    for (const sensor of sensors) {
+      let newMax: number | undefined
+      if (sensor.type === 'load' && craneData.max_load !== undefined) {
+        newMax = craneData.max_load
+      } else if (sensor.type === 'moment' && craneData.max_moment !== undefined) {
+        newMax = craneData.max_moment
+      } else if (sensor.type === 'radius' && craneData.max_radius !== undefined) {
+        newMax = craneData.max_radius
+      } else if (sensor.type === 'height' && craneData.max_height !== undefined) {
+        newMax = craneData.max_height
+      }
+      if (newMax !== undefined && newMax !== sensor.max_value) {
+        this.db.prepare('UPDATE sensors SET max_value = ? WHERE id = ?').run(newMax, sensor.id)
+      }
+    }
+  }
+
+  updateRuleThresholds(craneId: string, craneData: Partial<CraneCreateInput>): void {
+    const rules = this.db.prepare(`
+      SELECT * FROM alert_rules WHERE crane_id = ?
+    `).all(craneId) as Array<{ id: string; name: string; sensor_type: string; condition: string; threshold: number; level: string }>
+
+    for (const rule of rules) {
+      let newThreshold: number | undefined
+      if (rule.sensor_type === 'load' && craneData.max_load !== undefined) {
+        const multiplier = rule.name.includes('临界') ? 0.95 : 0.85
+        newThreshold = Number((craneData.max_load * multiplier).toFixed(2))
+      } else if (rule.sensor_type === 'moment' && craneData.max_moment !== undefined) {
+        const multiplier = rule.name.includes('临界') ? 0.95 : 0.80
+        newThreshold = Number((craneData.max_moment * multiplier).toFixed(2))
+      } else if (rule.sensor_type === 'wind') {
+        if (rule.name.includes('临界') && craneData.max_wind_operational !== undefined) {
+          newThreshold = Number((craneData.max_wind_operational * 1.67).toFixed(1))
+        } else if (craneData.max_wind_operational !== undefined) {
+          newThreshold = Number(craneData.max_wind_operational.toFixed(1))
+        }
+      }
+      if (newThreshold !== undefined && newThreshold !== rule.threshold) {
+        this.db.prepare('UPDATE alert_rules SET threshold = ? WHERE id = ?').run(newThreshold, rule.id)
+      }
+    }
+  }
+
+  getChangedFields(oldData: Crane, newData: Partial<CraneCreateInput>): string[] {
+    const changed: string[] = []
+    const numericFields = [
+      'location_x', 'location_y', 'max_load', 'max_moment', 'max_radius', 'max_height',
+      'min_radius', 'tip_load', 'hoist_speed', 'slewing_speed', 'trolley_speed',
+      'motor_power', 'total_weight', 'jib_weight', 'counterweight',
+      'free_standing_height', 'max_anchored_height',
+      'working_temp_min', 'working_temp_max', 'max_wind_operational', 'max_wind_nonoperational',
+    ]
+    const stringFields = [
+      'name', 'model', 'status', 'manufacturer', 'serial_number', 'production_date',
+      'project_name', 'construction_unit', 'registration_number',
+      'install_date', 'last_maintenance', 'power_supply',
+    ]
+
+    for (const f of numericFields) {
+      const oldVal = oldData[f as keyof Crane] as number | undefined
+      const newVal = newData[f as keyof Partial<CraneCreateInput>] as number | undefined
+      if (newVal !== undefined && newVal !== null) {
+        if (oldVal === undefined || oldVal === null || Math.abs(Number(newVal) - Number(oldVal)) > 0.001) {
+          changed.push(f)
+        }
+      }
+    }
+
+    for (const f of stringFields) {
+      const oldVal = oldData[f as keyof Crane] as string | undefined
+      const newVal = newData[f as keyof Partial<CraneCreateInput>] as string | undefined
+      if (newVal !== undefined && newVal !== null) {
+        const oldTrim = oldVal ? String(oldVal).trim() : ''
+        const newTrim = String(newVal).trim()
+        if (oldTrim !== newTrim) {
+          changed.push(f)
+        }
+      }
+    }
+
+    return changed
+  }
+
   delete(id: string): void {
     this.db.prepare('DELETE FROM cranes WHERE id = ?').run(id)
   }

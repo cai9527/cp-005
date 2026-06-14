@@ -49,6 +49,11 @@ export interface CreateCraneResult {
   crane?: Crane
   error?: string
   fieldErrors?: ValidationFieldError[]
+  changedFields?: string[]
+}
+
+export interface UpdateCraneResult extends CreateCraneResult {
+  changedFields?: string[]
 }
 
 export interface SensorData {
@@ -66,6 +71,7 @@ interface CraneState {
   selectedCraneId: string | null
   loading: boolean
   creating: boolean
+  updating: boolean
 
   fetchCranes: () => Promise<void>
   fetchCraneStats: () => Promise<void>
@@ -75,6 +81,7 @@ interface CraneState {
   updateSensorData: (craneId: string, sensorType: string, value: number, timestamp: string) => void
   updateCraneStatus: (craneId: string, status: string) => void
   createCrane: (input: Partial<CraneCreateInput>) => Promise<CreateCraneResult>
+  updateCrane: (id: string, input: Partial<CraneCreateInput>) => Promise<UpdateCraneResult>
 }
 
 const API_BASE = '/api'
@@ -86,6 +93,7 @@ export const useCraneStore = create<CraneState>((set, get) => ({
   selectedCraneId: null,
   loading: false,
   creating: false,
+  updating: false,
 
   fetchCranes: async () => {
     set({ loading: true })
@@ -206,6 +214,76 @@ export const useCraneStore = create<CraneState>((set, get) => ({
       }
     } finally {
       set({ creating: false })
+    }
+  },
+
+  updateCrane: async (id: string, input: Partial<CraneCreateInput>): Promise<UpdateCraneResult> => {
+    set({ updating: true })
+    try {
+      const res = await fetch(`${API_BASE}/cranes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+
+      const json = await res.json()
+
+      if (res.ok && json.success) {
+        const updatedCrane = json.data as Crane
+        set((state) => ({
+          cranes: state.cranes
+            .map((c) => (c.id === id ? updatedCrane : c))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        get().fetchCraneStats()
+        return {
+          success: true,
+          crane: updatedCrane,
+          changedFields: json.changedFields as string[],
+        }
+      }
+
+      if (res.status === 401) {
+        return {
+          success: false,
+          error: '未授权，请重新登录',
+        }
+      }
+
+      if (res.status === 403) {
+        return {
+          success: false,
+          error: '权限不足，仅管理员可编辑设备',
+        }
+      }
+
+      if (res.status === 404) {
+        return {
+          success: false,
+          error: json.error || '设备不存在',
+        }
+      }
+
+      if (res.status === 400 && json.details) {
+        return {
+          success: false,
+          error: json.error || '数据校验失败',
+          fieldErrors: json.details as ValidationFieldError[],
+        }
+      }
+
+      return {
+        success: false,
+        error: json.error || '更新失败，请稍后重试',
+      }
+    } catch (e) {
+      console.error('Failed to update crane:', e)
+      return {
+        success: false,
+        error: '网络错误，请稍后重试',
+      }
+    } finally {
+      set({ updating: false })
     }
   },
 }))

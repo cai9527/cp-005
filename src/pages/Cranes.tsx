@@ -1,18 +1,23 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useCraneStore } from '@/stores/craneStore'
+import { useAuthStore } from '@/stores/authStore'
 import StatusBadge from '@/components/StatusBadge'
 import { useNavigate } from 'react-router-dom'
-import { Search, Filter, Plus, MapPin, Calendar, Wrench, RefreshCw } from 'lucide-react'
+import { Search, Filter, Plus, MapPin, Calendar, Wrench, RefreshCw, Edit } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import AddCraneModal from '@/components/crane/AddCraneModal'
 
 export default function Cranes() {
   const navigate = useNavigate()
   const { cranes, fetchCranes, fetchCraneStats } = useCraneStore()
+  const { user } = useAuthStore()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingCraneId, setEditingCraneId] = useState<string | null>(null)
+  const isAdmin = user?.role === 'admin'
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -33,9 +38,24 @@ export default function Cranes() {
     return matchSearch && matchStatus
   })
 
+  const handleEdit = (craneId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setEditingCraneId(craneId)
+    setEditModalOpen(true)
+  }
+
+  const handleEditClose = () => {
+    setEditModalOpen(false)
+    setEditingCraneId(null)
+  }
+
   return (
     <div className="flex flex-col h-full gap-4 overflow-y-auto">
       <AddCraneModal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} />
+      {editingCraneId && (
+        <AddCraneModal isOpen={editModalOpen} onClose={handleEditClose} mode="edit" craneId={editingCraneId} />
+      )}
 
       <div className="flex items-center justify-between">
         <h2 className="font-display text-2xl font-bold text-text-primary">塔机管理</h2>
@@ -53,14 +73,16 @@ export default function Cranes() {
             <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
             刷新
           </button>
-          <button
-            type="button"
-            onClick={() => setAddModalOpen(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            添加塔机
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setAddModalOpen(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              添加塔机
+            </button>
+          )}
         </div>
       </div>
 
@@ -123,10 +145,22 @@ export default function Cranes() {
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-border-primary flex items-center gap-4 text-xs text-text-muted">
-              <span>{crane.max_load} t</span>
-              <span>{crane.max_moment} t·m</span>
-              <span>{crane.max_radius} m</span>
+            <div className="mt-4 pt-3 border-t border-border-primary flex items-center justify-between">
+              <div className="flex items-center gap-4 text-xs text-text-muted">
+                <span>{crane.max_load} t</span>
+                <span>{crane.max_moment} t·m</span>
+                <span>{crane.max_radius} m</span>
+              </div>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={(e) => handleEdit(crane.id, e)}
+                  className="p-1.5 rounded-lg hover:bg-bg-tertiary text-text-muted hover:text-text-primary transition-colors"
+                  title="编辑设备"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         ))}

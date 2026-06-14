@@ -1,16 +1,18 @@
-import { useState, useCallback, type ChangeEvent, type FormEvent } from 'react'
+import { useState, useCallback, useEffect, type ChangeEvent, type FormEvent } from 'react'
 import Modal from '@/components/ui/Modal'
-import { useCraneStore, type CraneCreateInput, type ValidationFieldError } from '@/stores/craneStore'
+import { useCraneStore, type Crane, type CraneCreateInput, type ValidationFieldError, type UpdateCraneResult } from '@/stores/craneStore'
 import {
   Building2, Factory, Hash, Calendar, MapPin, Weight, Ruler, Gauge,
   Thermometer, Wind, Zap, AlertTriangle, CheckCircle, X,
-  Info, Package, ArrowRight, CircleDot
+  Info, Package, ArrowRight, CircleDot, Edit2, Plus
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AddCraneModalProps {
   isOpen: boolean
   onClose: () => void
+  mode?: 'add' | 'edit'
+  craneId?: string
 }
 
 type FormState = Partial<CraneCreateInput>
@@ -19,7 +21,7 @@ type TouchedState = Record<string, boolean>
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 
-const validateField = (name: string, value: unknown, form: FormState): string => {
+const validateField = (name: string, value: unknown, form: FormState, mode: 'add' | 'edit' = 'add'): string => {
   const strVal = typeof value === 'string' ? value : value === undefined || value === null ? '' : String(value)
   const numVal = typeof value === 'number' ? value : (strVal === '' ? NaN : Number(strVal))
 
@@ -36,7 +38,7 @@ const validateField = (name: string, value: unknown, form: FormState): string =>
     last_maintenance: '最近维保日期',
   }
 
-  if (name in requiredFields) {
+  if (mode === 'add' && name in requiredFields) {
     if (strVal === '' || (typeof value === 'number' && isNaN(value))) {
       return `${requiredFields[name]}为必填项`
     }
@@ -72,21 +74,25 @@ const validateField = (name: string, value: unknown, form: FormState): string =>
     }
     case 'location_x':
     case 'location_y':
+      if (mode === 'edit' && !strVal) return ''
       if (isNaN(numVal)) return '请输入有效数字'
       if (numVal < 0) return '坐标不能小于0'
       if (numVal > 100) return '坐标不能大于100'
       return ''
     case 'max_load':
+      if (mode === 'edit' && !strVal) return ''
       if (isNaN(numVal)) return '请输入有效数字'
       if (numVal < 0.5) return '至少0.5吨'
       if (numVal > 100) return '不超过100吨'
       return ''
     case 'max_moment':
+      if (mode === 'edit' && !strVal) return ''
       if (isNaN(numVal)) return '请输入有效数字'
       if (numVal < 5) return '至少5 t·m'
       if (numVal > 1000) return '不超过1000 t·m'
       return ''
     case 'max_radius':
+      if (mode === 'edit' && !strVal) return ''
       if (isNaN(numVal)) return '请输入有效数字'
       if (numVal < 5) return '至少5米'
       if (numVal > 150) return '不超过150米'
@@ -107,6 +113,7 @@ const validateField = (name: string, value: unknown, form: FormState): string =>
       if (numVal > 50) return '不超过50吨'
       return ''
     case 'max_height':
+      if (mode === 'edit' && !strVal) return ''
       if (isNaN(numVal)) return '请输入有效数字'
       if (numVal < 5) return '至少5米'
       if (numVal > 500) return '不超过500米'
@@ -205,7 +212,7 @@ const validateField = (name: string, value: unknown, form: FormState): string =>
     case 'last_maintenance':
     case 'production_date': {
       if (!strVal) {
-        if (name === 'production_date') return ''
+        if (mode === 'edit' || name === 'production_date') return ''
         return requiredFields[name] ? `${requiredFields[name]}为必填项` : ''
       }
       if (!DATE_REGEX.test(strVal)) return '请使用YYYY-MM-DD格式'
@@ -246,18 +253,20 @@ interface FieldProps {
   error: string
   touched: boolean
   inputClassName?: string
+  mode?: 'add' | 'edit'
 }
 
 const FormField = ({
   label, name, type = 'text', placeholder, icon, unit, required, hint,
-  value, onChange, onBlur, error, touched, inputClassName = ''
+  value, onChange, onBlur, error, touched, inputClassName = '', mode = 'add'
 }: FieldProps) => {
   const hasError = touched && error
   const inputValue = value === undefined || value === null ? '' : value
+  const showRequired = required && mode === 'add'
   return (
     <div>
       <label className="block text-sm font-medium text-text-secondary mb-1.5">
-        {label} {required && <span className="text-accent-danger">*</span>}
+        {label} {showRequired && <span className="text-accent-danger">*</span>}
       </label>
       <div className="relative">
         {icon && (
@@ -315,12 +324,15 @@ const SectionTitle = ({ icon, title, desc }: { icon: React.ReactNode; title: str
   </div>
 )
 
-export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
+export default function AddCraneModal({ isOpen, onClose, mode = 'add', craneId }: AddCraneModalProps) {
   const createCrane = useCraneStore((s) => s.createCrane)
+  const updateCrane = useCraneStore((s) => s.updateCrane)
+  const cranes = useCraneStore((s) => s.cranes)
   const creating = useCraneStore((s) => s.creating)
+  const updating = useCraneStore((s) => s.updating)
 
   const today = new Date().toISOString().split('T')[0]
-  const [form, setForm] = useState<FormState>({
+  const defaultForm: FormState = {
     name: '',
     model: '',
     status: 'offline',
@@ -354,7 +366,51 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
     max_wind_operational: 12,
     max_wind_nonoperational: 30,
     power_supply: '380V/50Hz',
-  })
+  }
+
+  const [form, setForm] = useState<FormState>(defaultForm)
+
+  useEffect(() => {
+    if (mode === 'edit' && craneId && isOpen) {
+      const crane = cranes.find((c) => c.id === craneId)
+      if (crane) {
+        setForm({
+          ...crane,
+          max_load: crane.max_load,
+          max_moment: crane.max_moment,
+          max_radius: crane.max_radius,
+          max_height: crane.max_height,
+          tip_load: crane.tip_load,
+          hoist_speed: crane.hoist_speed,
+          slewing_speed: crane.slewing_speed,
+          trolley_speed: crane.trolley_speed,
+          motor_power: crane.motor_power,
+          total_weight: crane.total_weight,
+          jib_weight: crane.jib_weight,
+          counterweight: crane.counterweight,
+          free_standing_height: crane.free_standing_height,
+          max_anchored_height: crane.max_anchored_height,
+          min_radius: crane.min_radius,
+          working_temp_min: crane.working_temp_min,
+          working_temp_max: crane.working_temp_max,
+          max_wind_operational: crane.max_wind_operational,
+          max_wind_nonoperational: crane.max_wind_nonoperational,
+        })
+        setActiveSection(0)
+        setErrors({})
+        setTouched({})
+        setSubmitError('')
+        setSubmitSuccess(false)
+      }
+    } else if (mode === 'add' && isOpen) {
+      setForm(defaultForm)
+      setActiveSection(0)
+      setErrors({})
+      setTouched({})
+      setSubmitError('')
+      setSubmitSuccess(false)
+    }
+  }, [mode, craneId, isOpen, cranes])
 
   const [errors, setErrors] = useState<FormErrors>({})
   const [touched, setTouched] = useState<TouchedState>({})
@@ -366,7 +422,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
     setForm((prev) => ({ ...prev, [name]: value }))
     setSubmitError('')
     if (touched[name]) {
-      setErrors((prev) => ({ ...prev, [name]: validateField(name, value, form) }))
+      setErrors((prev) => ({ ...prev, [name]: validateField(name, value, form, mode) }))
     }
     const crossFields = [
       { field: 'min_radius', depends: 'max_radius' },
@@ -384,16 +440,16 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
       if (touched[other]) {
         setErrors((prev) => ({
           ...prev,
-          [other]: validateField(other, form[other as keyof FormState], { ...form, [name]: value }),
+          [other]: validateField(other, form[other as keyof FormState], { ...form, [name]: value }, mode),
         }))
       }
     }
-  }, [form, touched])
+  }, [form, touched, mode])
 
   const handleBlur = useCallback((name: string) => {
     setTouched((prev) => ({ ...prev, [name]: true }))
-    setErrors((prev) => ({ ...prev, [name]: validateField(name, form[name as keyof FormState], form) }))
-  }, [form])
+    setErrors((prev) => ({ ...prev, [name]: validateField(name, form[name as keyof FormState], form, mode) }))
+  }, [form, mode])
 
   const validateSection = (section: 0 | 1 | 2): boolean => {
     const sections: Record<0 | 1 | 2, string[]> = {
@@ -410,7 +466,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
     const fields = sections[section]
     const newErrors: FormErrors = {}
     fields.forEach((f) => {
-      newErrors[f] = validateField(f, form[f as keyof FormState], form)
+      newErrors[f] = validateField(f, form[f as keyof FormState], form, mode)
     })
     setErrors((prev) => ({ ...prev, ...newErrors }))
     setTouched((prev) => fields.reduce((acc, f) => ({ ...acc, [f]: true }), prev))
@@ -431,7 +487,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
     ]
     const newErrors: FormErrors = {}
     allFields.forEach((f) => {
-      newErrors[f] = validateField(f, form[f as keyof FormState], form)
+      newErrors[f] = validateField(f, form[f as keyof FormState], form, mode)
     })
     setErrors(newErrors)
     setTouched(allFields.reduce((acc, f) => ({ ...acc, [f]: true }), {}))
@@ -478,7 +534,11 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
       }
     }
 
-    const result = await createCrane(submitData)
+    const result = mode === 'add'
+      ? await createCrane(submitData)
+      : craneId
+        ? await updateCrane(craneId, submitData)
+        : { success: false, error: '缺少设备ID' }
 
     if (result.success) {
       setSubmitSuccess(true)
@@ -495,26 +555,14 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
         setErrors((prev) => ({ ...prev, ...fieldErrMap }))
         setTouched((prev) => result.fieldErrors!.reduce((acc, e) => ({ ...acc, [e.field]: true }), prev))
       }
-      setSubmitError(result.error || '创建设备失败，请检查输入')
+      setSubmitError(result.error || (mode === 'add' ? '创建设备失败，请检查输入' : '更新设备失败，请检查输入'))
     }
   }
 
   const handleReset = () => {
-    const td = new Date().toISOString().split('T')[0]
-    setForm({
-      name: '', model: '', status: 'offline',
-      location_x: 50, location_y: 50,
-      max_load: undefined, max_moment: undefined, max_radius: undefined, max_height: undefined,
-      install_date: td, last_maintenance: td,
-      manufacturer: '', serial_number: '', production_date: '',
-      project_name: '', construction_unit: '', registration_number: '',
-      min_radius: 2.5, tip_load: undefined, hoist_speed: undefined, slewing_speed: undefined,
-      trolley_speed: undefined, motor_power: undefined, total_weight: undefined, jib_weight: undefined,
-      counterweight: undefined, free_standing_height: undefined, max_anchored_height: undefined,
-      working_temp_min: -20, working_temp_max: 40,
-      max_wind_operational: 12, max_wind_nonoperational: 30,
-      power_supply: '380V/50Hz',
-    })
+    if (mode === 'add') {
+      setForm(defaultForm)
+    }
     setErrors({})
     setTouched({})
     setSubmitError('')
@@ -528,22 +576,26 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
     { key: 'env', label: '环境与重量', icon: <Wind className="w-4 h-4" /> },
   ] as const
 
+  const isProcessing = creating || updating
+  const modalTitle = mode === 'add' ? '添加塔机设备' : '编辑塔机设备'
+  const successMessage = mode === 'add' ? '设备创建成功！正在返回...' : '设备更新成功！正在返回...'
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={() => {
-        if (!creating) {
+        if (!isProcessing) {
           handleReset()
           onClose()
         }
       }}
-      title="添加塔机设备"
+      title={modalTitle}
       maxWidth="max-w-3xl"
     >
       {submitSuccess && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-accent-secondary/10 border border-accent-secondary/30 flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
           <CheckCircle className="w-4 h-4 text-accent-secondary flex-shrink-0 mt-0.5" />
-          <span className="text-sm text-accent-secondary">设备创建成功！正在返回...</span>
+          <span className="text-sm text-accent-secondary">{successMessage}</span>
         </div>
       )}
 
@@ -603,6 +655,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.name || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.name || ''} touched={!!touched.name}
+                  mode={mode}
                 />
                 <FormField
                   label="型号规格" name="model" required
@@ -611,6 +664,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.model || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.model || ''} touched={!!touched.model}
+                  mode={mode}
                 />
                 <FormField
                   label="生产厂家" name="manufacturer"
@@ -619,6 +673,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.manufacturer || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.manufacturer || ''} touched={!!touched.manufacturer}
+                  mode={mode}
                 />
                 <FormField
                   label="出厂编号" name="serial_number"
@@ -627,6 +682,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.serial_number || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.serial_number || ''} touched={!!touched.serial_number}
+                  mode={mode}
                 />
                 <FormField
                   label="出厂日期" name="production_date" type="date"
@@ -634,6 +690,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.production_date || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.production_date || ''} touched={!!touched.production_date}
+                  mode={mode}
                 />
                 <FormField
                   label="安装日期" name="install_date" type="date" required
@@ -641,6 +698,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.install_date || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.install_date || ''} touched={!!touched.install_date}
+                  mode={mode}
                 />
                 <FormField
                   label="最近维保日期" name="last_maintenance" type="date" required
@@ -648,6 +706,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.last_maintenance || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.last_maintenance || ''} touched={!!touched.last_maintenance}
+                  mode={mode}
                 />
                 <FormField
                   label="备案登记号" name="registration_number"
@@ -656,6 +715,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.registration_number || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.registration_number || ''} touched={!!touched.registration_number}
+                  mode={mode}
                 />
                 <FormField
                   label="所属项目" name="project_name"
@@ -664,6 +724,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.project_name || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.project_name || ''} touched={!!touched.project_name}
+                  mode={mode}
                 />
                 <FormField
                   label="施工单位" name="construction_unit"
@@ -672,6 +733,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   value={form.construction_unit || ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.construction_unit || ''} touched={!!touched.construction_unit}
+                  mode={mode}
                 />
                 <FormField
                   label="X坐标位置" name="location_x" type="number" required
@@ -680,6 +742,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="%" value={form.location_x ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.location_x || ''} touched={!!touched.location_x}
+                  mode={mode}
                 />
                 <FormField
                   label="Y坐标位置" name="location_y" type="number" required
@@ -688,6 +751,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="%" value={form.location_y ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.location_y || ''} touched={!!touched.location_y}
+                  mode={mode}
                 />
               </div>
             </div>
@@ -708,6 +772,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="t" value={form.max_load ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_load || ''} touched={!!touched.max_load}
+                  mode={mode}
                 />
                 <FormField
                   label="额定起重力矩" name="max_moment" type="number" required
@@ -716,6 +781,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="t·m" value={form.max_moment ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_moment || ''} touched={!!touched.max_moment}
+                  mode={mode}
                 />
                 <FormField
                   label="最大工作幅度" name="max_radius" type="number" required
@@ -724,6 +790,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="m" value={form.max_radius ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_radius || ''} touched={!!touched.max_radius}
+                  mode={mode}
                 />
                 <FormField
                   label="最小工作幅度" name="min_radius" type="number"
@@ -733,6 +800,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.min_radius || ''} touched={!!touched.min_radius}
                   hint="默认2.5米"
+                  mode={mode}
                 />
                 <FormField
                   label="臂端额定载荷" name="tip_load" type="number"
@@ -741,6 +809,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="t" value={form.tip_load ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.tip_load || ''} touched={!!touched.tip_load}
+                  mode={mode}
                 />
                 <FormField
                   label="最大起升高度" name="max_height" type="number" required
@@ -749,6 +818,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="m" value={form.max_height ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_height || ''} touched={!!touched.max_height}
+                  mode={mode}
                 />
                 <FormField
                   label="独立高度" name="free_standing_height" type="number"
@@ -757,6 +827,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="m" value={form.free_standing_height ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.free_standing_height || ''} touched={!!touched.free_standing_height}
+                  mode={mode}
                 />
                 <FormField
                   label="最大附着高度" name="max_anchored_height" type="number"
@@ -765,6 +836,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="m" value={form.max_anchored_height ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_anchored_height || ''} touched={!!touched.max_anchored_height}
+                  mode={mode}
                 />
                 <FormField
                   label="起升速度" name="hoist_speed" type="number"
@@ -773,6 +845,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="m/min" value={form.hoist_speed ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.hoist_speed || ''} touched={!!touched.hoist_speed}
+                  mode={mode}
                 />
                 <FormField
                   label="回转速度" name="slewing_speed" type="number"
@@ -781,6 +854,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="r/min" value={form.slewing_speed ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.slewing_speed || ''} touched={!!touched.slewing_speed}
+                  mode={mode}
                 />
                 <FormField
                   label="变幅速度" name="trolley_speed" type="number"
@@ -789,6 +863,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="m/min" value={form.trolley_speed ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.trolley_speed || ''} touched={!!touched.trolley_speed}
+                  mode={mode}
                 />
                 <FormField
                   label="电机总功率" name="motor_power" type="number"
@@ -797,6 +872,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="kW" value={form.motor_power ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.motor_power || ''} touched={!!touched.motor_power}
+                  mode={mode}
                 />
               </div>
             </div>
@@ -817,6 +893,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="t" value={form.total_weight ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.total_weight || ''} touched={!!touched.total_weight}
+                  mode={mode}
                 />
                 <FormField
                   label="起重臂自重" name="jib_weight" type="number"
@@ -825,6 +902,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="t" value={form.jib_weight ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.jib_weight || ''} touched={!!touched.jib_weight}
+                  mode={mode}
                 />
                 <FormField
                   label="平衡重" name="counterweight" type="number"
@@ -833,6 +911,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   unit="t" value={form.counterweight ?? ''}
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.counterweight || ''} touched={!!touched.counterweight}
+                  mode={mode}
                 />
                 <FormField
                   label="电源要求" name="power_supply"
@@ -842,6 +921,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.power_supply || ''} touched={!!touched.power_supply}
                   hint="默认380V/50Hz"
+                  mode={mode}
                 />
                 <FormField
                   label="工作温度下限" name="working_temp_min" type="number"
@@ -851,6 +931,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.working_temp_min || ''} touched={!!touched.working_temp_min}
                   hint="默认-20°C"
+                  mode={mode}
                 />
                 <FormField
                   label="工作温度上限" name="working_temp_max" type="number"
@@ -860,6 +941,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.working_temp_max || ''} touched={!!touched.working_temp_max}
                   hint="默认40°C"
+                  mode={mode}
                 />
                 <FormField
                   label="允许工作风速" name="max_wind_operational" type="number"
@@ -869,6 +951,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_wind_operational || ''} touched={!!touched.max_wind_operational}
                   hint="默认12 m/s（约6级风）"
+                  mode={mode}
                 />
                 <FormField
                   label="允许非工作风速" name="max_wind_nonoperational" type="number"
@@ -878,20 +961,36 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                   onChange={handleChange} onBlur={handleBlur}
                   error={errors.max_wind_nonoperational || ''} touched={!!touched.max_wind_nonoperational}
                   hint="默认30 m/s（约11级风）"
+                  mode={mode}
                 />
               </div>
 
-              <div className="mt-6 p-4 rounded-lg bg-accent-primary/5 border border-accent-primary/20">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-accent-primary mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-text-secondary space-y-1">
-                    <p><span className="font-medium text-text-primary">提交前须知：</span></p>
-                    <p>• 创建成功后将自动生成 6 个标准传感器（起重量、力矩、幅度、高度、回转、风速）</p>
-                    <p>• 根据参数自动生成 6 条默认告警规则（起重量/力矩/风速的警告与临界级别）</p>
-                    <p>• 初始状态为「离线」，设备联网后自动变为「在线」</p>
+              {mode === 'add' && (
+                <div className="mt-6 p-4 rounded-lg bg-accent-primary/5 border border-accent-primary/20">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-4 h-4 text-accent-primary mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-text-secondary space-y-1">
+                      <p><span className="font-medium text-text-primary">提交前须知：</span></p>
+                      <p>• 创建成功后将自动生成 6 个标准传感器（起重量、力矩、幅度、高度、回转、风速）</p>
+                      <p>• 根据参数自动生成 6 条默认告警规则（起重量/力矩/风速的警告与临界级别）</p>
+                      <p>• 初始状态为「离线」，设备联网后自动变为「在线」</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+              {mode === 'edit' && (
+                <div className="mt-6 p-4 rounded-lg bg-accent-warning/10 border border-accent-warning/30">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-4 h-4 text-accent-warning mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-text-secondary space-y-1">
+                      <p><span className="font-medium text-text-primary">修改须知：</span></p>
+                      <p>• 修改核心参数（最大起重量、额定力矩、工作风速等）将自动更新关联的传感器阈值和告警规则</p>
+                      <p>• 所有修改操作将被记录到操作日志，包含修改前后的对比</p>
+                      <p>• 配置更新后将在 30 秒内同步到设备端</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -900,12 +999,12 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
           <button
             type="button"
             onClick={() => {
-              if (!creating) {
+              if (!isProcessing) {
                 handleReset()
                 onClose()
               }
             }}
-            disabled={creating}
+            disabled={isProcessing}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50"
           >
             <X className="w-4 h-4" />
@@ -917,7 +1016,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
               <button
                 type="button"
                 onClick={() => setActiveSection((s) => (s - 1) as 0 | 1 | 2)}
-                disabled={creating}
+                disabled={isProcessing}
                 className="btn-secondary disabled:opacity-50"
               >
                 上一步
@@ -931,7 +1030,7 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
                     setActiveSection((s) => (s + 1) as 0 | 1 | 2)
                   }
                 }}
-                disabled={creating}
+                disabled={isProcessing}
                 className="btn-primary flex items-center gap-2 disabled:opacity-50"
               >
                 下一步
@@ -940,21 +1039,24 @@ export default function AddCraneModal({ isOpen, onClose }: AddCraneModalProps) {
             ) : (
               <button
                 type="submit"
-                disabled={creating || submitSuccess}
+                disabled={isProcessing || submitSuccess}
                 className="btn-primary flex items-center gap-2 disabled:opacity-50"
               >
-                {creating ? (
+                {isProcessing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    创建中...
+                    {mode === 'add' ? '创建中...' : '更新中...'}
                   </>
                 ) : submitSuccess ? (
                   <>
                     <CheckCircle className="w-4 h-4" />
-                    创建成功
+                    {mode === 'add' ? '创建成功' : '更新成功'}
                   </>
                 ) : (
-                  '确认创建设备'
+                  <>
+                    {mode === 'add' ? <Plus className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                    {mode === 'add' ? '确认创建设备' : '确认更新设备'}
+                  </>
                 )}
               </button>
             )}

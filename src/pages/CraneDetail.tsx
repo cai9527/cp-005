@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useCraneStore } from '@/stores/craneStore'
+import { useAuthStore } from '@/stores/authStore'
 import { useAlertStore } from '@/stores/alertStore'
 import { useParams, useNavigate } from 'react-router-dom'
 import GaugeChart from '@/components/GaugeChart'
 import StatusBadge from '@/components/StatusBadge'
 import AlertBadge from '@/components/AlertBadge'
-import { ArrowLeft, MapPin, Calendar, Wrench, Settings, Activity, RefreshCw } from 'lucide-react'
+import AddCraneModal from '@/components/crane/AddCraneModal'
+import { ArrowLeft, MapPin, Calendar, Wrench, Settings, Activity, RefreshCw, Edit } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const SENSOR_NAMES: Record<string, string> = {
@@ -42,8 +44,11 @@ export default function CraneDetail() {
   const navigate = useNavigate()
   const { cranes, sensorData, fetchLatestByCrane, fetchCranes } = useCraneStore()
   const { activeAlerts, fetchActiveAlerts } = useAlertStore()
+  const { user } = useAuthStore()
   const [sensors, setSensors] = useState<SensorInfo[]>([])
   const [refreshing, setRefreshing] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const isAdmin = user?.role === 'admin'
 
   const fetchSensors = useCallback(async () => {
     if (!id) return
@@ -101,6 +106,10 @@ export default function CraneDetail() {
 
   return (
     <div className="flex flex-col h-full gap-4 overflow-y-auto">
+      {id && (
+        <AddCraneModal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} mode="edit" craneId={id} />
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -117,19 +126,31 @@ export default function CraneDetail() {
             <StatusBadge status={crane.status} />
           </div>
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            handleRefresh()
-          }}
-          className="btn-secondary flex items-center gap-2"
-          disabled={refreshing}
-        >
-          <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
-          刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleRefresh()
+            }}
+            className="btn-secondary flex items-center gap-2"
+            disabled={refreshing}
+          >
+            <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+            刷新
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setEditModalOpen(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Edit className="w-4 h-4" />
+              编辑设备
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
