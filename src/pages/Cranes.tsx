@@ -4,6 +4,7 @@ import StatusBadge from '@/components/StatusBadge'
 import { useNavigate } from 'react-router-dom'
 import { Search, Filter, Plus, MapPin, Calendar, Wrench, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import AddCraneModal from '@/components/crane/AddCraneModal'
 
 export default function Cranes() {
   const navigate = useNavigate()
@@ -11,6 +12,7 @@ export default function Cranes() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [addModalOpen, setAddModalOpen] = useState(false)
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -33,6 +35,8 @@ export default function Cranes() {
 
   return (
     <div className="flex flex-col h-full gap-4 overflow-y-auto">
+      <AddCraneModal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} />
+
       <div className="flex items-center justify-between">
         <h2 className="font-display text-2xl font-bold text-text-primary">塔机管理</h2>
         <div className="flex items-center gap-3">
@@ -49,7 +53,11 @@ export default function Cranes() {
             <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
             刷新
           </button>
-          <button className="btn-primary flex items-center gap-2" disabled>
+          <button
+            type="button"
+            onClick={() => setAddModalOpen(true)}
+            className="btn-primary flex items-center gap-2"
+          >
             <Plus className="w-4 h-4" />
             添加塔机
           </button>

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
-import { craneService } from '../services/craneService.js'
+import { craneService, CraneValidationError } from '../services/craneService.js'
+import type { CraneCreateInput } from '../repositories/craneRepository.js'
 
 const router = Router()
 
@@ -18,6 +19,48 @@ router.get('/stats', (req: Request, res: Response): void => {
     res.json({ success: true, data: stats })
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to fetch crane stats' })
+  }
+})
+
+router.post('/', (req: Request, res: Response): void => {
+  try {
+    const input = req.body as Partial<CraneCreateInput>
+    const crane = craneService.createCrane(input)
+    res.status(201).json({
+      success: true,
+      message: '塔机设备创建成功',
+      data: crane,
+    })
+  } catch (error) {
+    if (error instanceof CraneValidationError) {
+      res.status(400).json({
+        success: false,
+        error: '数据校验失败',
+        details: error.errors,
+      })
+      return
+    }
+    console.error('Create crane error:', error)
+    res.status(500).json({
+      success: false,
+      error: '创建设备失败，请稍后重试',
+    })
+  }
+})
+
+router.post('/validate', (req: Request, res: Response): void => {
+  try {
+    const input = req.body as Partial<CraneCreateInput>
+    const errors = craneService.validateCreateInput(input)
+    res.json({
+      success: errors.length === 0,
+      data: { valid: errors.length === 0, errors },
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: '校验失败',
+    })
   }
 })
 

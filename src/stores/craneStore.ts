@@ -13,6 +13,42 @@ export interface Crane {
   max_height: number
   install_date: string
   last_maintenance: string
+  manufacturer?: string
+  serial_number?: string
+  production_date?: string
+  project_name?: string
+  construction_unit?: string
+  registration_number?: string
+  min_radius?: number
+  tip_load?: number
+  hoist_speed?: number
+  slewing_speed?: number
+  trolley_speed?: number
+  motor_power?: number
+  total_weight?: number
+  jib_weight?: number
+  counterweight?: number
+  free_standing_height?: number
+  max_anchored_height?: number
+  working_temp_min?: number
+  working_temp_max?: number
+  max_wind_operational?: number
+  max_wind_nonoperational?: number
+  power_supply?: string
+}
+
+export type CraneCreateInput = Omit<Crane, 'id'>
+
+export interface ValidationFieldError {
+  field: string
+  message: string
+}
+
+export interface CreateCraneResult {
+  success: boolean
+  crane?: Crane
+  error?: string
+  fieldErrors?: ValidationFieldError[]
 }
 
 export interface SensorData {
@@ -29,6 +65,7 @@ interface CraneState {
   stats: { total: number; online: number; offline: number; alarm: number }
   selectedCraneId: string | null
   loading: boolean
+  creating: boolean
 
   fetchCranes: () => Promise<void>
   fetchCraneStats: () => Promise<void>
@@ -37,6 +74,7 @@ interface CraneState {
   selectCrane: (id: string | null) => void
   updateSensorData: (craneId: string, sensorType: string, value: number, timestamp: string) => void
   updateCraneStatus: (craneId: string, status: string) => void
+  createCrane: (input: Partial<CraneCreateInput>) => Promise<CreateCraneResult>
 }
 
 const API_BASE = '/api'
@@ -47,6 +85,7 @@ export const useCraneStore = create<CraneState>((set, get) => ({
   stats: { total: 0, online: 0, offline: 0, alarm: 0 },
   selectedCraneId: null,
   loading: false,
+  creating: false,
 
   fetchCranes: async () => {
     set({ loading: true })
@@ -125,5 +164,48 @@ export const useCraneStore = create<CraneState>((set, get) => ({
         c.id === craneId ? { ...c, status: status as Crane['status'] } : c
       ),
     }))
+  },
+
+  createCrane: async (input: Partial<CraneCreateInput>): Promise<CreateCraneResult> => {
+    set({ creating: true })
+    try {
+      const res = await fetch(`${API_BASE}/cranes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+
+      const json = await res.json()
+
+      if (res.ok && json.success) {
+        const newCrane = json.data as Crane
+        set((state) => ({
+          cranes: [...state.cranes, newCrane].sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        get().fetchCraneStats()
+        return { success: true, crane: newCrane }
+      }
+
+      if (res.status === 400 && json.details) {
+        return {
+          success: false,
+          error: json.error || '数据校验失败',
+          fieldErrors: json.details as ValidationFieldError[],
+        }
+      }
+
+      return {
+        success: false,
+        error: json.error || '创建设备失败，请稍后重试',
+      }
+    } catch (e) {
+      console.error('Failed to create crane:', e)
+      return {
+        success: false,
+        error: '网络错误，请稍后重试',
+      }
+    } finally {
+      set({ creating: false })
+    }
   },
 }))

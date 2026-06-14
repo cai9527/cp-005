@@ -41,7 +41,29 @@ function initializeDatabase(database: Database.Database): void {
       max_radius REAL NOT NULL,
       max_height REAL NOT NULL,
       install_date TEXT NOT NULL,
-      last_maintenance TEXT NOT NULL
+      last_maintenance TEXT NOT NULL,
+      manufacturer TEXT,
+      serial_number TEXT,
+      production_date TEXT,
+      project_name TEXT,
+      construction_unit TEXT,
+      registration_number TEXT,
+      min_radius REAL DEFAULT 2,
+      tip_load REAL,
+      hoist_speed REAL,
+      slewing_speed REAL,
+      trolley_speed REAL,
+      motor_power REAL,
+      total_weight REAL,
+      jib_weight REAL,
+      counterweight REAL,
+      free_standing_height REAL,
+      max_anchored_height REAL,
+      working_temp_min REAL DEFAULT -20,
+      working_temp_max REAL DEFAULT 40,
+      max_wind_operational REAL DEFAULT 12,
+      max_wind_nonoperational REAL DEFAULT 30,
+      power_supply TEXT DEFAULT '380V/50Hz'
     );
 
     CREATE TABLE IF NOT EXISTS sensors (
@@ -144,6 +166,44 @@ function initializeDatabase(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_operation_logs_action ON operation_logs(action);
     CREATE INDEX IF NOT EXISTS idx_operation_logs_timestamp ON operation_logs(timestamp);
   `)
+
+  migrateCranesTable(database)
+}
+
+function migrateCranesTable(database: Database.Database): void {
+  const columns = database.prepare("PRAGMA table_info(cranes)").all() as { name: string }[]
+  const colNames = new Set(columns.map(c => c.name))
+
+  const newColumns: { name: string; definition: string }[] = [
+    { name: 'manufacturer', definition: 'TEXT' },
+    { name: 'serial_number', definition: 'TEXT' },
+    { name: 'production_date', definition: 'TEXT' },
+    { name: 'project_name', definition: 'TEXT' },
+    { name: 'construction_unit', definition: 'TEXT' },
+    { name: 'registration_number', definition: 'TEXT' },
+    { name: 'min_radius', definition: 'REAL DEFAULT 2' },
+    { name: 'tip_load', definition: 'REAL' },
+    { name: 'hoist_speed', definition: 'REAL' },
+    { name: 'slewing_speed', definition: 'REAL' },
+    { name: 'trolley_speed', definition: 'REAL' },
+    { name: 'motor_power', definition: 'REAL' },
+    { name: 'total_weight', definition: 'REAL' },
+    { name: 'jib_weight', definition: 'REAL' },
+    { name: 'counterweight', definition: 'REAL' },
+    { name: 'free_standing_height', definition: 'REAL' },
+    { name: 'max_anchored_height', definition: 'REAL' },
+    { name: 'working_temp_min', definition: 'REAL DEFAULT -20' },
+    { name: 'working_temp_max', definition: 'REAL DEFAULT 40' },
+    { name: 'max_wind_operational', definition: 'REAL DEFAULT 12' },
+    { name: 'max_wind_nonoperational', definition: 'REAL DEFAULT 30' },
+    { name: 'power_supply', definition: "TEXT DEFAULT '380V/50Hz'" },
+  ]
+
+  for (const col of newColumns) {
+    if (!colNames.has(col.name)) {
+      database.prepare(`ALTER TABLE cranes ADD COLUMN ${col.name} ${col.definition}`).run()
+    }
+  }
 }
 
 function seedInitialData(database: Database.Database): void {
@@ -156,8 +216,14 @@ function seedCraneData(database: Database.Database): void {
   if (craneCount.count > 0) return
 
   const insertCrane = database.prepare(`
-    INSERT INTO cranes (id, name, model, status, location_x, location_y, max_load, max_moment, max_radius, max_height, install_date, last_maintenance)
-    VALUES (@id, @name, @model, @status, @location_x, @location_y, @max_load, @max_moment, @max_radius, @max_height, @install_date, @last_maintenance)
+    INSERT INTO cranes (id, name, model, status, location_x, location_y, max_load, max_moment, max_radius, max_height, install_date, last_maintenance,
+      manufacturer, serial_number, production_date, project_name, construction_unit, registration_number,
+      min_radius, tip_load, hoist_speed, slewing_speed, trolley_speed, motor_power, total_weight, jib_weight, counterweight,
+      free_standing_height, max_anchored_height, working_temp_min, working_temp_max, max_wind_operational, max_wind_nonoperational, power_supply)
+    VALUES (@id, @name, @model, @status, @location_x, @location_y, @max_load, @max_moment, @max_radius, @max_height, @install_date, @last_maintenance,
+      @manufacturer, @serial_number, @production_date, @project_name, @construction_unit, @registration_number,
+      @min_radius, @tip_load, @hoist_speed, @slewing_speed, @trolley_speed, @motor_power, @total_weight, @jib_weight, @counterweight,
+      @free_standing_height, @max_anchored_height, @working_temp_min, @working_temp_max, @max_wind_operational, @max_wind_nonoperational, @power_supply)
   `)
 
   const insertSensor = database.prepare(`
@@ -184,6 +250,28 @@ function seedCraneData(database: Database.Database): void {
       max_height: 120,
       install_date: '2025-03-15',
       last_maintenance: '2026-05-20',
+      manufacturer: '中联重科',
+      serial_number: 'ZL2024QTZ80-0156',
+      production_date: '2024-11-20',
+      project_name: '滨江新城A区项目',
+      construction_unit: '中建三局集团有限公司',
+      registration_number: '粤AQ-T2025-0031',
+      min_radius: 2.5,
+      tip_load: 1.3,
+      hoist_speed: 70,
+      slewing_speed: 0.6,
+      trolley_speed: 35,
+      motor_power: 37,
+      total_weight: 45,
+      jib_weight: 6.8,
+      counterweight: 14.5,
+      free_standing_height: 45,
+      max_anchored_height: 180,
+      working_temp_min: -20,
+      working_temp_max: 40,
+      max_wind_operational: 12,
+      max_wind_nonoperational: 30,
+      power_supply: '380V/50Hz',
     },
     {
       id: uuidv4(),
@@ -198,6 +286,28 @@ function seedCraneData(database: Database.Database): void {
       max_height: 150,
       install_date: '2025-04-10',
       last_maintenance: '2026-05-15',
+      manufacturer: '徐工集团',
+      serial_number: 'XG2024QTZ125-0089',
+      production_date: '2024-10-15',
+      project_name: '滨江新城A区项目',
+      construction_unit: '中建三局集团有限公司',
+      registration_number: '粤AQ-T2025-0032',
+      min_radius: 3,
+      tip_load: 2.1,
+      hoist_speed: 80,
+      slewing_speed: 0.55,
+      trolley_speed: 40,
+      motor_power: 55,
+      total_weight: 68,
+      jib_weight: 9.2,
+      counterweight: 21,
+      free_standing_height: 52,
+      max_anchored_height: 220,
+      working_temp_min: -20,
+      working_temp_max: 40,
+      max_wind_operational: 12,
+      max_wind_nonoperational: 30,
+      power_supply: '380V/50Hz',
     },
     {
       id: uuidv4(),
@@ -212,6 +322,28 @@ function seedCraneData(database: Database.Database): void {
       max_height: 100,
       install_date: '2025-05-20',
       last_maintenance: '2026-06-01',
+      manufacturer: '三一重工',
+      serial_number: 'SY2025QTZ63-0023',
+      production_date: '2025-01-10',
+      project_name: '滨江新城B区项目',
+      construction_unit: '中建八局第一建设有限公司',
+      registration_number: '粤AQ-T2025-0045',
+      min_radius: 2.5,
+      tip_load: 1.0,
+      hoist_speed: 60,
+      slewing_speed: 0.65,
+      trolley_speed: 32,
+      motor_power: 30,
+      total_weight: 36,
+      jib_weight: 5.2,
+      counterweight: 11,
+      free_standing_height: 40,
+      max_anchored_height: 150,
+      working_temp_min: -20,
+      working_temp_max: 40,
+      max_wind_operational: 12,
+      max_wind_nonoperational: 30,
+      power_supply: '380V/50Hz',
     },
     {
       id: uuidv4(),
@@ -226,6 +358,28 @@ function seedCraneData(database: Database.Database): void {
       max_height: 180,
       install_date: '2025-06-01',
       last_maintenance: '2026-04-10',
+      manufacturer: '中联重科',
+      serial_number: 'ZL2025QTZ160-0012',
+      production_date: '2025-02-28',
+      project_name: '滨江新城B区项目',
+      construction_unit: '中建八局第一建设有限公司',
+      registration_number: '粤AQ-T2025-0046',
+      min_radius: 3,
+      tip_load: 2.5,
+      hoist_speed: 85,
+      slewing_speed: 0.5,
+      trolley_speed: 42,
+      motor_power: 75,
+      total_weight: 82,
+      jib_weight: 11.5,
+      counterweight: 26,
+      free_standing_height: 60,
+      max_anchored_height: 250,
+      working_temp_min: -20,
+      working_temp_max: 40,
+      max_wind_operational: 12,
+      max_wind_nonoperational: 30,
+      power_supply: '380V/50Hz',
     },
   ]
 
@@ -252,7 +406,8 @@ function seedCraneData(database: Database.Database): void {
       insertCrane.run(crane)
 
       for (const st of sensorTypes) {
-        const maxVal = 'max' in st ? (st as { max: number }).max : (crane as Record<string, number>)[st.maxField]
+        const craneAny = crane as unknown as Record<string, number>
+        const maxVal = 'max' in st ? (st as { max: number }).max : craneAny[st.maxField]
         insertSensor.run({
           id: uuidv4(),
           crane_id: crane.id,
@@ -270,7 +425,8 @@ function seedCraneData(database: Database.Database): void {
         if (rt.fixed !== undefined) {
           threshold = rt.fixed
         } else {
-          const maxVal = 'max' in sensor ? (sensor as { max: number }).max : (crane as Record<string, number>)[sensor.maxField]
+          const craneAny = crane as unknown as Record<string, number>
+          const maxVal = 'max' in sensor ? (sensor as { max: number }).max : craneAny[sensor.maxField]
           threshold = Number((maxVal * rt.multiplier).toFixed(2))
         }
         insertRule.run({
