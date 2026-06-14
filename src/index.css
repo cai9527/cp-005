@@ -97,9 +97,17 @@
   }
 
   .input-field {
-    @apply w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg
+    @apply w-full px-3 py-2.5 bg-bg-tertiary border border-border-primary rounded-lg
            text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-primary
            focus:ring-1 focus:ring-accent-primary transition-all duration-200 text-sm;
+    min-height: 44px;
+  }
+
+  @media (max-width: 640px) {
+    .input-field {
+      min-height: 48px;
+      @apply text-base;
+    }
   }
 
   .grid-bg {
