@@ -1,4 +1,4 @@
-import { type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -6,6 +6,7 @@ import {
   PasswordInput,
   RememberCheckbox,
   ForgotPasswordLink,
+  ForgotPasswordModal,
   LoginButton,
   ErrorAlert,
   LoginHeader,
@@ -19,6 +20,7 @@ export default function Login() {
   const loading = useAuthStore((s) => s.loading)
   const error = useAuthStore((s) => s.error)
   const clearError = useAuthStore((s) => s.clearError)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
 
   const {
     state,
@@ -58,7 +60,7 @@ export default function Login() {
   }
 
   const handleForgotPassword = () => {
-    alert('请联系系统管理员重置密码')
+    setShowForgotPassword(true)
   }
 
   const handleAccountTypeChange = (role: 'admin' | 'user', username: string, password: string) => {
@@ -160,6 +162,11 @@ export default function Login() {
           © 2026 智慧工地塔机监测平台 · 安全登录
         </p>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+      />
     </div>
   )
 }
