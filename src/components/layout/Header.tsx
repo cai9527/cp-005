@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, AlertTriangle, Clock, X, PanelLeftClose, PanelLeftOpen,
-  ZoomIn, ZoomOut, RotateCcw, Link,
+  ZoomIn, ZoomOut, RotateCcw, Link, LogOut, Shield, User,
 } from 'lucide-react'
 import { useAlertStore, type Alert } from '@/stores/alertStore'
+import { useAuthStore } from '@/stores/authStore'
 import { useUIStore, ZOOM_LEVELS, type ZoomLevel } from '@/stores/uiStore'
 import { cn } from '@/lib/utils'
 
@@ -179,16 +180,24 @@ export default function Header() {
   const syncZoom = useUIStore((s) => s.syncZoom)
   const toggleSyncZoom = useUIStore((s) => s.toggleSyncZoom)
 
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+
   const [time, setTime] = useState(formatTime(new Date()))
   const [showPanel, setShowPanel] = useState(false)
   const [panelPos, setPanelPos] = useState<PanelPosition>({ top: 0, right: 0 })
   const [showZoomMenu, setShowZoomMenu] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
 
   const bellBtnRef = useRef<HTMLButtonElement>(null)
   const zoomBtnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const zoomMenuRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
+
+  const roleLabel = user?.role === 'admin' ? '管理员' : '个人'
+  const RoleIcon = user?.role === 'admin' ? Shield : User
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -220,11 +229,16 @@ export default function Header() {
       if (!clickedZoomBtn && !clickedZoomMenu) {
         setShowZoomMenu(false)
       }
+      const clickedUserMenu = userMenuRef.current?.contains(target)
+      if (!clickedUserMenu) {
+        setShowUserMenu(false)
+      }
     }
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setShowPanel(false)
         setShowZoomMenu(false)
+        setShowUserMenu(false)
       }
     }
     function handleResize() {
@@ -236,7 +250,7 @@ export default function Header() {
         })
       }
     }
-    if (showPanel || showZoomMenu) {
+    if (showPanel || showZoomMenu || showUserMenu) {
       document.addEventListener('mousedown', handleClickOutside)
       document.addEventListener('keydown', handleKeydown)
       window.addEventListener('resize', handleResize)
@@ -246,7 +260,7 @@ export default function Header() {
       document.removeEventListener('keydown', handleKeydown)
       window.removeEventListener('resize', handleResize)
     }
-  }, [showPanel, showZoomMenu])
+  }, [showPanel, showZoomMenu, showUserMenu])
 
   const handleBellClick = () => {
     setShowPanel((prev) => !prev)
@@ -266,6 +280,12 @@ export default function Header() {
   const alertCount = activeAlerts.length
 
   const zoomPercent = Math.round(zoomLevel * 100)
+
+  const handleLogout = () => {
+    setShowUserMenu(false)
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <header className="h-14 bg-bg-secondary/80 backdrop-blur border-b border-border-primary flex items-center justify-between px-6 relative z-[100]">
@@ -474,11 +494,82 @@ export default function Header() {
 
         <span className="text-xs text-text-secondary font-mono tabular-nums">{time}</span>
 
-        <div
-          className="w-8 h-8 rounded-full bg-accent-primary/20 text-accent-primary flex items-center justify-center text-sm font-bold cursor-pointer select-none"
-          title="管理员"
-        >
-          管
+        <div className="relative" ref={userMenuRef}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowUserMenu((prev) => !prev)
+              setShowPanel(false)
+              setShowZoomMenu(false)
+            }}
+            className={cn(
+              'flex items-center gap-2 h-9 px-3 rounded-lg',
+              'hover:bg-bg-tertiary transition-all duration-200 active:scale-95',
+              'touch-manipulation select-none',
+              showUserMenu && 'bg-bg-tertiary'
+            )}
+          >
+            <div
+              className={cn(
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold',
+                user?.role === 'admin'
+                  ? 'bg-accent-primary/20 text-accent-primary'
+                  : 'bg-accent-secondary/20 text-accent-secondary'
+              )}
+            >
+              <RoleIcon className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-sm text-text-secondary hidden sm:inline">{user?.username || roleLabel}</span>
+          </button>
+
+          {showUserMenu && (
+            <div
+              style={{ zIndex: 2147483646 }}
+              className={cn(
+                'absolute right-0 top-full mt-2 bg-bg-secondary border border-border-primary',
+                'rounded-xl shadow-2xl overflow-hidden min-w-[180px]',
+                'animate-in fade-in slide-in-from-top-2 duration-200'
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-3 border-b border-border-primary">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
+                      user?.role === 'admin'
+                        ? 'bg-accent-primary/20 text-accent-primary'
+                        : 'bg-accent-secondary/20 text-accent-secondary'
+                    )}
+                  >
+                    <RoleIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">
+                      {user?.username || '未知用户'}
+                    </p>
+                    <p className={cn(
+                      'text-xs',
+                      user?.role === 'admin' ? 'text-accent-primary' : 'text-accent-secondary'
+                    )}>
+                      {roleLabel}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-1.5">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  退出登录
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>

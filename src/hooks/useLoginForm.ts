@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import type { UserRole } from '@/stores/authStore'
 
 export interface LoginFormState {
   username: string
@@ -8,6 +9,8 @@ export interface LoginFormState {
   usernameError: string
   passwordError: string
   touched: { username: boolean; password: boolean }
+  accountType: UserRole
+  autoFilled: boolean
 }
 
 export interface UseLoginFormReturn {
@@ -20,6 +23,7 @@ export interface UseLoginFormReturn {
   handlePasswordBlur: () => void
   validateAll: () => boolean
   reset: () => void
+  setAccountType: (role: UserRole, username: string, password: string) => void
 }
 
 const initialState: LoginFormState = {
@@ -30,6 +34,8 @@ const initialState: LoginFormState = {
   usernameError: '',
   passwordError: '',
   touched: { username: false, password: false },
+  accountType: 'admin',
+  autoFilled: false,
 }
 
 export const validateUsername = (value: string): string => {
@@ -48,17 +54,19 @@ export const validatePassword = (value: string): string => {
 }
 
 export function useLoginForm(initialUsername = '', initialRemember = false): UseLoginFormReturn {
-  const [state, setState] = useState<LoginFormState>({
+  const [state, setState] = useState<LoginFormState>(() => ({
     ...initialState,
     username: initialUsername,
     remember: initialRemember,
-  })
+    autoFilled: !!initialUsername,
+  }))
 
   const setUsername = useCallback((value: string) => {
     setState((prev) => ({
       ...prev,
       username: value,
       usernameError: prev.touched.username ? validateUsername(value) : '',
+      autoFilled: false,
     }))
   }, [])
 
@@ -67,6 +75,7 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
       ...prev,
       password: value,
       passwordError: prev.touched.password ? validatePassword(value) : '',
+      autoFilled: false,
     }))
   }, [])
 
@@ -110,6 +119,19 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
     setState(initialState)
   }, [])
 
+  const setAccountType = useCallback((role: UserRole, username: string, password: string) => {
+    setState((prev) => ({
+      ...prev,
+      accountType: role,
+      username,
+      password,
+      usernameError: '',
+      passwordError: '',
+      touched: { username: false, password: false },
+      autoFilled: true,
+    }))
+  }, [])
+
   return {
     state,
     setUsername,
@@ -120,5 +142,6 @@ export function useLoginForm(initialUsername = '', initialRemember = false): Use
     handlePasswordBlur,
     validateAll,
     reset,
+    setAccountType,
   }
 }

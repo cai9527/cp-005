@@ -9,14 +9,22 @@ import {
   SIDEBAR_WIDTHS,
   type SidebarWidthMode,
 } from '@/stores/uiStore'
+import { useAuthStore, type UserRole } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { path: '/', label: '实时监控', icon: Activity },
-  { path: '/cranes', label: '塔机管理', icon: Construction },
-  { path: '/history', label: '历史数据', icon: Database },
-  { path: '/alerts', label: '预警中心', icon: AlertTriangle },
-  { path: '/analysis', label: '数据分析', icon: BarChart3 },
+interface NavItem {
+  path: string
+  label: string
+  icon: typeof Activity
+  roles: UserRole[]
+}
+
+const navItems: NavItem[] = [
+  { path: '/', label: '实时监控', icon: Activity, roles: ['admin', 'user'] },
+  { path: '/cranes', label: '塔机管理', icon: Construction, roles: ['admin'] },
+  { path: '/history', label: '历史数据', icon: Database, roles: ['admin', 'user'] },
+  { path: '/alerts', label: '预警中心', icon: AlertTriangle, roles: ['admin', 'user'] },
+  { path: '/analysis', label: '数据分析', icon: BarChart3, roles: ['admin'] },
 ]
 
 const widthOrder: SidebarWidthMode[] = ['collapsed', 'compact', 'normal', 'wide']
@@ -38,6 +46,10 @@ export default function Sidebar() {
   const toggleSyncZoom = useUIStore((s) => s.toggleSyncZoom)
   const sidebarRef = useRef<HTMLElement>(null)
   const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const userRole = useAuthStore((s) => s.user?.role || 'user')
+
+  const visibleNavItems = navItems.filter((item) => item.roles.includes(userRole))
 
   const currentWidth = SIDEBAR_WIDTHS[sidebarCollapsed ? 'collapsed' : sidebarWidthMode]
 
@@ -106,7 +118,7 @@ export default function Sidebar() {
           effectiveMode === 'collapsed' && 'flex flex-col items-center'
         )}
       >
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}

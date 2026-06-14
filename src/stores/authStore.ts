@@ -1,8 +1,15 @@
 import { create } from 'zustand'
 
+export type UserRole = 'admin' | 'user'
+
+export interface AuthUser {
+  username: string
+  role: UserRole
+}
+
 interface AuthState {
   isAuthenticated: boolean
-  user: { username: string } | null
+  user: AuthUser | null
   token: string | null
   loading: boolean
   error: string | null
@@ -11,18 +18,35 @@ interface AuthState {
   clearError: () => void
 }
 
+const DEFAULT_ACCOUNTS: Record<string, { password: string; role: UserRole }> = {
+  admin: { password: 'admin123', role: 'admin' },
+  user: { password: 'user123', role: 'user' },
+}
+
+function parseStoredUser(): AuthUser | null {
+  const saved = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved)
+      if (parsed && typeof parsed.username === 'string') {
+        return {
+          username: parsed.username,
+          role: parsed.role || 'user',
+        }
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: (() => {
     const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
     return !!token
   })(),
-  user: (() => {
-    const saved = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user')
-    if (saved) {
-      try { return JSON.parse(saved) } catch { return null }
-    }
-    return null
-  })(),
+  user: parseStoredUser(),
   token: localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'),
   loading: false,
   error: null,
@@ -40,9 +64,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error(data.message || '登录失败，请检查用户名和密码')
       }
       const data = await res.json()
+      const role: UserRole = data.role || 'user'
       const storage = remember ? localStorage : sessionStorage
       storage.setItem('auth_token', data.token)
-      storage.setItem('auth_user', JSON.stringify({ username }))
+      storage.setItem('auth_user', JSON.stringify({ username, role }))
       if (remember) {
         localStorage.setItem('remembered_username', username)
       } else {
@@ -50,15 +75,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
       set({
         isAuthenticated: true,
-        user: { username },
+        user: { username, role },
         token: data.token,
         loading: false,
         error: null,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '网络错误，请稍后重试'
       set({
         loading: false,
-        error: err.message || '网络错误，请稍后重试',
+        error: message,
       })
       throw err
     }
@@ -79,3 +105,5 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   clearError: () => set({ error: null }),
 }))
+
+export { DEFAULT_ACCOUNTS }

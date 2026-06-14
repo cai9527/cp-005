@@ -9,6 +9,7 @@ import {
   LoginButton,
   ErrorAlert,
   LoginHeader,
+  AccountTypeSelector,
   useLoginForm,
 } from '@/components/login'
 
@@ -28,6 +29,7 @@ export default function Login() {
     handleUsernameBlur,
     handlePasswordBlur,
     validateAll,
+    setAccountType,
   } = useLoginForm(
     localStorage.getItem('remembered_username') || '',
     !!localStorage.getItem('remembered_username')
@@ -56,6 +58,11 @@ export default function Login() {
 
   const handleForgotPassword = () => {
     alert('请联系系统管理员重置密码')
+  }
+
+  const handleAccountTypeChange = (role: 'admin' | 'user', username: string, password: string) => {
+    setAccountType(role, username, password)
+    if (error) clearError()
   }
 
   return (
@@ -96,12 +103,23 @@ export default function Login() {
           <ErrorAlert message={error || ''} />
 
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                选择账号类型
+              </label>
+              <AccountTypeSelector
+                selected={state.accountType}
+                onChange={handleAccountTypeChange}
+              />
+            </div>
+
             <UsernameInput
               value={state.username}
               onChange={handleUsernameChange}
               onBlur={handleUsernameBlur}
               error={state.usernameError}
               touched={state.touched.username}
+              autoFilled={state.autoFilled}
             />
 
             <PasswordInput
@@ -113,6 +131,7 @@ export default function Login() {
               error={state.passwordError}
               touched={state.touched.password}
               autoComplete={state.remember ? 'current-password' : 'off'}
+              autoFilled={state.autoFilled}
             />
 
             <div className="flex items-center justify-between">
