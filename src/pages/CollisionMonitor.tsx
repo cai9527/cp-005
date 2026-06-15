@@ -1,4 +1,15 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+
+interface IntersectionInfo {
+  crane1_id: string
+  crane2_id: string
+  crane1_name: string
+  crane2_name: string
+  center_distance: number
+  overlap_depth: number
+  area: number
+  type: 'partial' | 'contained'
+}
 import {
   Shield, ShieldAlert, ShieldCheck, RefreshCw, AlertTriangle,
   MapPin, Zap, Ruler, Clock, ChevronRight, Settings,
@@ -28,6 +39,47 @@ export default function CollisionMonitor() {
     return cranes.find(c => c.id === craneId)?.name || craneId
   }, [cranes])
 
+  const intersections = useMemo<IntersectionInfo[]>(() => {
+    const result: IntersectionInfo[] = []
+    for (let i = 0; i < cranePositions.length; i++) {
+      for (let j = i + 1; j < cranePositions.length; j++) {
+        const p1 = cranePositions[i]
+        const p2 = cranePositions[j]
+        const d = Math.sqrt(
+          Math.pow(p2.baseX - p1.baseX, 2) + Math.pow(p2.baseY - p1.baseY, 2)
+        )
+        const r1 = p1.radius
+        const r2 = p2.radius
+        if (d < r1 + r2) {
+          const isContained = d <= Math.abs(r1 - r2)
+          let area: number
+          if (isContained) {
+            const smallerR = Math.min(r1, r2)
+            area = Math.PI * smallerR * smallerR
+          } else {
+            const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
+            const h = Math.sqrt(Math.max(0, r1 * r1 - a * a))
+            const angle1 = Math.acos(Math.min(1, Math.max(-1, a / r1)))
+            const angle2 = Math.acos(Math.min(1, Math.max(-1, (d - a) / r2)))
+            area = r1 * r1 * angle1 + r2 * r2 * angle2 - 0.5 * d * h
+          }
+          const overlapDepth = r1 + r2 - d
+          result.push({
+            crane1_id: p1.craneId,
+            crane2_id: p2.craneId,
+            crane1_name: p1.craneName,
+            crane2_name: p2.craneName,
+            center_distance: d,
+            overlap_depth: overlapDepth,
+            area,
+            type: isContained ? 'contained' : 'partial',
+          })
+        }
+      }
+    }
+    return result
+  }, [cranePositions])
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
@@ -48,6 +100,45 @@ export default function CollisionMonitor() {
   useEffect(() => {
     handleRefresh()
   }, [handleRefresh])
+
+  const drawCircleIntersection = (
+    ctx: CanvasRenderingContext2D,
+    x1: number, y1: number, r1: number,
+    x2: number, y2: number, r2: number
+  ) => {
+    const dx = x2 - x1
+    const dy = y2 - y1
+    const d = Math.sqrt(dx * dx + dy * dy)
+
+    if (d >= r1 + r2 || d <= Math.abs(r1 - r2)) return false
+    if (d === 0) return false
+
+    const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
+    const h = Math.sqrt(r1 * r1 - a * a)
+
+    const mx = x1 + (a * dx) / d
+    const my = y1 + (a * dy) / d
+
+    const px = (-h * dy) / d
+    const py = (h * dx) / d
+
+    const p1x = mx + px
+    const p1y = my + py
+    const p2x = mx - px
+    const p2y = my - py
+
+    const angle1 = Math.atan2(p1y - y1, p1x - x1)
+    const angle2 = Math.atan2(p2y - y1, p2x - x1)
+    const angle3 = Math.atan2(p1y - y2, p1x - x2)
+    const angle4 = Math.atan2(p2y - y2, p2x - x2)
+
+    ctx.beginPath()
+    ctx.arc(x1, y1, r1, angle1, angle2, false)
+    ctx.arc(x2, y2, r2, angle4, angle3, false)
+    ctx.closePath()
+
+    return true
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -101,6 +192,118 @@ export default function CollisionMonitor() {
       ctx.moveTo(padding, y)
       ctx.lineTo(width - padding, y)
       ctx.stroke()
+    }
+
+    const intersectionInfos: Array<{
+      cx: number
+      cy: number
+      area: number
+      overlapRatio: number
+      crane1Name: string
+      crane2Name: string
+    }> = []
+
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const pos1 = positions[i]
+        const pos2 = positions[j]
+
+        const cx1 = toCanvasX(pos1.baseX)
+        const cy1 = toCanvasY(pos1.baseY)
+        const r1 = pos1.radius * scale
+
+        const cx2 = toCanvasX(pos2.baseX)
+        const cy2 = toCanvasY(pos2.baseY)
+        const r2 = pos2.radius * scale
+
+        const dx = cx2 - cx1
+        const dy = cy2 - cy1
+        const d = Math.sqrt(dx * dx + dy * dy)
+
+        if (d < r1 + r2 && d > Math.abs(r1 - r2)) {
+          const intersects = drawCircleIntersection(ctx, cx1, cy1, r1, cx2, cy2, r2)
+          if (intersects) {
+            const dReal = Math.sqrt(
+              Math.pow(pos2.baseX - pos1.baseX, 2) + Math.pow(pos2.baseY - pos1.baseY, 2)
+            )
+            const r1Real = pos1.radius
+            const r2Real = pos2.radius
+
+            const aReal = (r1Real * r1Real - r2Real * r2Real + dReal * dReal) / (2 * dReal)
+            const hReal = Math.sqrt(Math.max(0, r1Real * r1Real - aReal * aReal))
+
+            const angle1 = Math.acos(Math.min(1, Math.max(-1, aReal / r1Real)))
+            const angle2 = Math.acos(Math.min(1, Math.max(-1, (dReal - aReal) / r2Real)))
+
+            const area = r1Real * r1Real * angle1 + r2Real * r2Real * angle2 - 0.5 * dReal * hReal
+
+            const smallerRadius = Math.min(r1Real, r2Real)
+            const overlapDepth = r1Real + r2Real - dReal
+            const overlapRatio = overlapDepth / (smallerRadius * 2)
+
+            const gradient = ctx.createRadialGradient(
+              (cx1 + cx2) / 2, (cy1 + cy2) / 2, 0,
+              (cx1 + cx2) / 2, (cy1 + cy2) / 2, Math.max(r1, r2)
+            )
+            gradient.addColorStop(0, 'rgba(255, 59, 48, 0.35)')
+            gradient.addColorStop(0.5, 'rgba(255, 59, 48, 0.25)')
+            gradient.addColorStop(1, 'rgba(255, 59, 48, 0.15)')
+
+            ctx.fillStyle = gradient
+            ctx.fill()
+
+            ctx.strokeStyle = 'rgba(255, 59, 48, 0.6)'
+            ctx.lineWidth = 2
+            ctx.setLineDash([6, 4])
+            ctx.stroke()
+            ctx.setLineDash([])
+
+            intersectionInfos.push({
+              cx: (cx1 + cx2) / 2,
+              cy: (cy1 + cy2) / 2,
+              area,
+              overlapRatio,
+              crane1Name: pos1.craneName.split(' ')[0],
+              crane2Name: pos2.craneName.split(' ')[0],
+            })
+          }
+        } else if (d <= Math.abs(r1 - r2)) {
+          const smallerR = Math.min(r1, r2)
+          const largerR = Math.max(r1, r2)
+          const smallerCx = r1 < r2 ? cx1 : cx2
+          const smallerCy = r1 < r2 ? cy1 : cy2
+
+          const gradient = ctx.createRadialGradient(
+            smallerCx, smallerCy, 0,
+            smallerCx, smallerCy, smallerR
+          )
+          gradient.addColorStop(0, 'rgba(255, 59, 48, 0.4)')
+          gradient.addColorStop(1, 'rgba(255, 59, 48, 0.2)')
+
+          ctx.fillStyle = gradient
+          ctx.beginPath()
+          ctx.arc(smallerCx, smallerCy, smallerR, 0, Math.PI * 2)
+          ctx.fill()
+
+          ctx.strokeStyle = 'rgba(255, 59, 48, 0.7)'
+          ctx.lineWidth = 2
+          ctx.setLineDash([6, 4])
+          ctx.stroke()
+          ctx.setLineDash([])
+
+          const smallerRReal = Math.min(pos1.radius, pos2.radius)
+          const area = Math.PI * smallerRReal * smallerRReal
+
+          intersectionInfos.push({
+            cx: smallerCx,
+            cy: smallerCy,
+            area,
+            overlapRatio: 1,
+            crane1Name: pos1.craneName.split(' ')[0],
+            crane2Name: pos2.craneName.split(' ')[0],
+          })
+        }
+      }
     }
 
     for (const pair of riskPairs) {
@@ -180,6 +383,19 @@ export default function CollisionMonitor() {
       ctx.fillText(pos.craneName.split(' ')[0], baseX, baseY - 14)
     }
 
+    for (const info of intersectionInfos) {
+      ctx.fillStyle = '#FF3B30'
+      ctx.font = 'bold 10px Rajdhani, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(`相交面积: ${info.area.toFixed(1)}m²`, info.cx, info.cy - 4)
+      ctx.fillStyle = '#E2E8F0'
+      ctx.font = '9px Rajdhani, sans-serif'
+      ctx.fillText(
+        `${info.crane1Name} ↔ ${info.crane2Name}`,
+        info.cx, info.cy + 10
+      )
+    }
+
   }, [cranePositions, riskPairs])
 
   const riskLevelConfig = {
@@ -214,7 +430,7 @@ export default function CollisionMonitor() {
         </button>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <div className="glass-card p-3 flex items-center gap-3">
           <div className="p-2 rounded-lg bg-accent-primary/10">
             <MapPin className="w-5 h-5 text-accent-primary" />
@@ -222,6 +438,19 @@ export default function CollisionMonitor() {
           <div>
             <div className="data-label">在线设备</div>
             <div className="font-display font-bold text-lg text-text-primary">{cranePositions.length}</div>
+          </div>
+        </div>
+        <div className="glass-card p-3 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-accent-danger/10">
+            <div className="w-5 h-5 flex items-center justify-center">
+              <div className="w-4 h-4 rounded-full bg-accent-danger/50" />
+            </div>
+          </div>
+          <div>
+            <div className="data-label">空间相交</div>
+            <div className="font-display font-bold text-lg text-accent-danger">
+              {intersections.length}
+            </div>
           </div>
         </div>
         <div className="glass-card p-3 flex items-center gap-3">
@@ -269,6 +498,29 @@ export default function CollisionMonitor() {
                   暂无位置数据
                 </div>
               )}
+              <div className="absolute top-3 left-3 bg-bg-secondary/90 backdrop-blur-sm rounded-lg p-2.5 border border-border-primary/50 text-[10px] space-y-1.5">
+                <div className="font-medium text-text-secondary mb-1">图例</div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-accent-danger/40 border border-accent-danger/60" />
+                  <span className="text-text-muted">空间相交区域</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-0.5 bg-accent-danger border-t border-dashed border-accent-danger" />
+                  <span className="text-text-muted">相交边界</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-0.5 bg-accent-primary" />
+                  <span className="text-text-muted">起重臂</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-accent-secondary" />
+                  <span className="text-text-muted">基座位置</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-accent-warning" />
+                  <span className="text-text-muted">臂端位置</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -367,6 +619,49 @@ export default function CollisionMonitor() {
                       >
                         解除
                       </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="glass-card p-4">
+            <h3 className="text-sm font-medium text-text-secondary mb-3">空间相交详情</h3>
+            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              {intersections.length === 0 ? (
+                <div className="text-center py-4 text-text-muted text-sm">
+                  无空间相交区域
+                </div>
+              ) : (
+                intersections.map((item, idx) => (
+                  <div key={idx} className="p-2 rounded bg-accent-danger/5 border border-accent-danger/20">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-text-primary truncate">
+                        {item.crane1_name.split(' ')[0]} ↔ {item.crane2_name.split(' ')[0]}
+                      </span>
+                      <span className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded',
+                        item.type === 'contained'
+                          ? 'bg-accent-danger/20 text-accent-danger'
+                          : 'bg-accent-warning/20 text-accent-warning'
+                      )}>
+                        {item.type === 'contained' ? '包含' : '部分相交'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-[10px] text-text-muted">
+                      <div className="flex items-center gap-1">
+                        <Ruler className="w-3 h-3" />
+                        <span>中心距 {item.center_distance.toFixed(1)}m</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Zap className="w-3 h-3" />
+                        <span>重叠深 {item.overlap_depth.toFixed(1)}m</span>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span>相交面积 {item.area.toFixed(1)}m²</span>
+                      </div>
                     </div>
                   </div>
                 ))
