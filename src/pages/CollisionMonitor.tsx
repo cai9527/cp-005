@@ -101,7 +101,7 @@ export default function CollisionMonitor() {
     handleRefresh()
   }, [handleRefresh])
 
-  const drawCircleIntersection = (
+  const buildIntersectionPath = (
     ctx: CanvasRenderingContext2D,
     x1: number, y1: number, r1: number,
     x2: number, y2: number, r2: number
@@ -138,6 +138,54 @@ export default function CollisionMonitor() {
     ctx.closePath()
 
     return true
+  }
+
+  const drawCraneGeometry = (
+    ctx: CanvasRenderingContext2D,
+    pos: CranePosition,
+    toCanvasX: (x: number) => number,
+    toCanvasY: (y: number) => number,
+    scale: number,
+    options?: {
+      overrideStrokeColor?: string
+      overrideArmColor?: string
+      overrideBaseFill?: string
+      overrideBaseStroke?: string
+      overrideJibEndColor?: string
+      overrideRadiusStroke?: string
+    }
+  ) => {
+    const baseX = toCanvasX(pos.baseX)
+    const baseY = toCanvasY(pos.baseY)
+    const endX = toCanvasX(pos.jibEndX)
+    const endY = toCanvasY(pos.jibEndY)
+
+    ctx.strokeStyle = options?.overrideRadiusStroke ?? '#2A3A4E'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(baseX, baseY, pos.radius * scale, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.strokeStyle = options?.overrideArmColor ?? '#00D4FF'
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(baseX, baseY)
+    ctx.lineTo(endX, endY)
+    ctx.stroke()
+
+    ctx.fillStyle = options?.overrideBaseFill ?? '#0B1120'
+    ctx.strokeStyle = options?.overrideBaseStroke ?? '#00D4FF'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(baseX, baseY, 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = options?.overrideJibEndColor ?? '#FF6B35'
+    ctx.beginPath()
+    ctx.arc(endX, endY, 6, 0, Math.PI * 2)
+    ctx.fill()
   }
 
   useEffect(() => {
@@ -194,14 +242,22 @@ export default function CollisionMonitor() {
       ctx.stroke()
     }
 
-    const intersectionInfos: Array<{
+    type IntersectionDrawInfo = {
       cx: number
       cy: number
       area: number
       overlapRatio: number
       crane1Name: string
       crane2Name: string
-    }> = []
+      pos1: CranePosition
+      pos2: CranePosition
+      type: 'partial' | 'contained'
+      cx1: number; cy1: number; r1: number
+      cx2: number; cy2: number; r2: number
+    }
+
+    const intersectionsToDraw: IntersectionDrawInfo[] = []
+    const intersectingCraneIds = new Set<string>()
 
     for (let i = 0; i < positions.length; i++) {
       for (let j = i + 1; j < positions.length; j++) {
@@ -220,95 +276,128 @@ export default function CollisionMonitor() {
         const dy = cy2 - cy1
         const d = Math.sqrt(dx * dx + dy * dy)
 
-        if (d < r1 + r2 && d > Math.abs(r1 - r2)) {
-          const intersects = drawCircleIntersection(ctx, cx1, cy1, r1, cx2, cy2, r2)
-          if (intersects) {
-            const dReal = Math.sqrt(
-              Math.pow(pos2.baseX - pos1.baseX, 2) + Math.pow(pos2.baseY - pos1.baseY, 2)
-            )
-            const r1Real = pos1.radius
-            const r2Real = pos2.radius
+        if (d < r1 + r2) {
+          intersectingCraneIds.add(pos1.craneId)
+          intersectingCraneIds.add(pos2.craneId)
 
+          const dReal = Math.sqrt(
+            Math.pow(pos2.baseX - pos1.baseX, 2) + Math.pow(pos2.baseY - pos1.baseY, 2)
+          )
+          const r1Real = pos1.radius
+          const r2Real = pos2.radius
+
+          let area: number
+          let overlapRatio: number
+          let type: 'partial' | 'contained'
+
+          if (d > Math.abs(r1 - r2)) {
             const aReal = (r1Real * r1Real - r2Real * r2Real + dReal * dReal) / (2 * dReal)
             const hReal = Math.sqrt(Math.max(0, r1Real * r1Real - aReal * aReal))
-
             const angle1 = Math.acos(Math.min(1, Math.max(-1, aReal / r1Real)))
             const angle2 = Math.acos(Math.min(1, Math.max(-1, (dReal - aReal) / r2Real)))
-
-            const area = r1Real * r1Real * angle1 + r2Real * r2Real * angle2 - 0.5 * dReal * hReal
-
+            area = r1Real * r1Real * angle1 + r2Real * r2Real * angle2 - 0.5 * dReal * hReal
             const smallerRadius = Math.min(r1Real, r2Real)
             const overlapDepth = r1Real + r2Real - dReal
-            const overlapRatio = overlapDepth / (smallerRadius * 2)
-
-            const gradient = ctx.createRadialGradient(
-              (cx1 + cx2) / 2, (cy1 + cy2) / 2, 0,
-              (cx1 + cx2) / 2, (cy1 + cy2) / 2, Math.max(r1, r2)
-            )
-            gradient.addColorStop(0, 'rgba(255, 59, 48, 0.35)')
-            gradient.addColorStop(0.5, 'rgba(255, 59, 48, 0.25)')
-            gradient.addColorStop(1, 'rgba(255, 59, 48, 0.15)')
-
-            ctx.fillStyle = gradient
-            ctx.fill()
-
-            ctx.strokeStyle = 'rgba(255, 59, 48, 0.6)'
-            ctx.lineWidth = 2
-            ctx.setLineDash([6, 4])
-            ctx.stroke()
-            ctx.setLineDash([])
-
-            intersectionInfos.push({
-              cx: (cx1 + cx2) / 2,
-              cy: (cy1 + cy2) / 2,
-              area,
-              overlapRatio,
-              crane1Name: pos1.craneName.split(' ')[0],
-              crane2Name: pos2.craneName.split(' ')[0],
-            })
+            overlapRatio = overlapDepth / (smallerRadius * 2)
+            type = 'partial'
+          } else {
+            const smallerRReal = Math.min(r1Real, r2Real)
+            area = Math.PI * smallerRReal * smallerRReal
+            overlapRatio = 1
+            type = 'contained'
           }
-        } else if (d <= Math.abs(r1 - r2)) {
-          const smallerR = Math.min(r1, r2)
-          const largerR = Math.max(r1, r2)
-          const smallerCx = r1 < r2 ? cx1 : cx2
-          const smallerCy = r1 < r2 ? cy1 : cy2
 
-          const gradient = ctx.createRadialGradient(
-            smallerCx, smallerCy, 0,
-            smallerCx, smallerCy, smallerR
-          )
-          gradient.addColorStop(0, 'rgba(255, 59, 48, 0.4)')
-          gradient.addColorStop(1, 'rgba(255, 59, 48, 0.2)')
-
-          ctx.fillStyle = gradient
-          ctx.beginPath()
-          ctx.arc(smallerCx, smallerCy, smallerR, 0, Math.PI * 2)
-          ctx.fill()
-
-          ctx.strokeStyle = 'rgba(255, 59, 48, 0.7)'
-          ctx.lineWidth = 2
-          ctx.setLineDash([6, 4])
-          ctx.stroke()
-          ctx.setLineDash([])
-
-          const smallerRReal = Math.min(pos1.radius, pos2.radius)
-          const area = Math.PI * smallerRReal * smallerRReal
-
-          intersectionInfos.push({
-            cx: smallerCx,
-            cy: smallerCy,
+          intersectionsToDraw.push({
+            cx: type === 'contained' && r1 !== r2
+              ? (r1 < r2 ? cx1 : cx2)
+              : (cx1 + cx2) / 2,
+            cy: type === 'contained' && r1 !== r2
+              ? (r1 < r2 ? cy1 : cy2)
+              : (cy1 + cy2) / 2,
             area,
-            overlapRatio: 1,
+            overlapRatio,
             crane1Name: pos1.craneName.split(' ')[0],
             crane2Name: pos2.craneName.split(' ')[0],
+            pos1, pos2, type,
+            cx1, cy1, r1,
+            cx2, cy2, r2,
           })
         }
       }
     }
 
+    for (const info of intersectionsToDraw) {
+      if (info.type === 'partial') {
+        buildIntersectionPath(ctx, info.cx1, info.cy1, info.r1, info.cx2, info.cy2, info.r2)
+      } else {
+        const smallerR = Math.min(info.r1, info.r2)
+        const smallerCx = info.r1 < info.r2 ? info.cx1 : info.cx2
+        const smallerCy = info.r1 < info.r2 ? info.cy1 : info.cy2
+        ctx.beginPath()
+        ctx.arc(smallerCx, smallerCy, smallerR, 0, Math.PI * 2)
+      }
+
+      const gradient = ctx.createRadialGradient(
+        info.cx, info.cy, 0,
+        info.cx, info.cy, Math.max(info.r1, info.r2) * 0.8
+      )
+      gradient.addColorStop(0, 'rgba(255, 59, 48, 0.4)')
+      gradient.addColorStop(0.5, 'rgba(255, 59, 48, 0.28)')
+      gradient.addColorStop(1, 'rgba(255, 59, 48, 0.18)')
+      ctx.fillStyle = gradient
+      ctx.fill()
+
+      ctx.strokeStyle = 'rgba(255, 59, 48, 0.65)'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+
+    for (const pos of positions) {
+      const baseX = toCanvasX(pos.baseX)
+      const baseY = toCanvasY(pos.baseY)
+      drawCraneGeometry(ctx, pos, toCanvasX, toCanvasY, scale)
+      ctx.fillStyle = '#E2E8F0'
+      ctx.font = '11px Rajdhani, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(pos.craneName.split(' ')[0], baseX, baseY - 14)
+    }
+
+    for (const info of intersectionsToDraw) {
+      ctx.save()
+      if (info.type === 'partial') {
+        buildIntersectionPath(ctx, info.cx1, info.cy1, info.r1, info.cx2, info.cy2, info.r2)
+      } else {
+        const smallerR = Math.min(info.r1, info.r2)
+        const smallerCx = info.r1 < info.r2 ? info.cx1 : info.cx2
+        const smallerCy = info.r1 < info.r2 ? info.cy1 : info.cy2
+        ctx.beginPath()
+        ctx.arc(smallerCx, smallerCy, smallerR, 0, Math.PI * 2)
+      }
+      ctx.clip()
+
+      drawCraneGeometry(ctx, info.pos1, toCanvasX, toCanvasY, scale, {
+        overrideStrokeColor: '#FF3B30',
+        overrideArmColor: '#FF3B30',
+        overrideBaseFill: '#FF3B30',
+        overrideBaseStroke: '#FFD6D6',
+        overrideJibEndColor: '#FF3B30',
+        overrideRadiusStroke: '#FF3B30',
+      })
+      drawCraneGeometry(ctx, info.pos2, toCanvasX, toCanvasY, scale, {
+        overrideStrokeColor: '#FF3B30',
+        overrideArmColor: '#FF3B30',
+        overrideBaseFill: '#FF3B30',
+        overrideBaseStroke: '#FFD6D6',
+        overrideJibEndColor: '#FF3B30',
+        overrideRadiusStroke: '#FF3B30',
+      })
+      ctx.restore()
+    }
+
     for (const pair of riskPairs) {
       if (pair.risk_level === 'safe') continue
-
       const pos1 = positions.find(p => p.craneId === pair.crane1_id)
       const pos2 = positions.find(p => p.craneId === pair.crane2_id)
       if (!pos1 || !pos2) continue
@@ -344,46 +433,7 @@ export default function CollisionMonitor() {
       ctx.fillText(`${pair.distance.toFixed(1)}m`, midX, midY - 8)
     }
 
-    for (const pos of positions) {
-      const baseX = toCanvasX(pos.baseX)
-      const baseY = toCanvasY(pos.baseY)
-      const endX = toCanvasX(pos.jibEndX)
-      const endY = toCanvasY(pos.jibEndY)
-
-      ctx.strokeStyle = '#2A3A4E'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(baseX, baseY, pos.radius * scale, 0, Math.PI * 2)
-      ctx.stroke()
-
-      ctx.strokeStyle = '#00D4FF'
-      ctx.lineWidth = 3
-      ctx.lineCap = 'round'
-      ctx.beginPath()
-      ctx.moveTo(baseX, baseY)
-      ctx.lineTo(endX, endY)
-      ctx.stroke()
-
-      ctx.fillStyle = '#0B1120'
-      ctx.strokeStyle = '#00D4FF'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(baseX, baseY, 8, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-
-      ctx.fillStyle = '#FF6B35'
-      ctx.beginPath()
-      ctx.arc(endX, endY, 6, 0, Math.PI * 2)
-      ctx.fill()
-
-      ctx.fillStyle = '#E2E8F0'
-      ctx.font = '11px Rajdhani, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(pos.craneName.split(' ')[0], baseX, baseY - 14)
-    }
-
-    for (const info of intersectionInfos) {
+    for (const info of intersectionsToDraw) {
       ctx.fillStyle = '#FF3B30'
       ctx.font = 'bold 10px Rajdhani, sans-serif'
       ctx.textAlign = 'center'
