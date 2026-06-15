@@ -270,6 +270,105 @@ function initializeDatabase(database: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_position_snapshots_crane ON device_position_snapshots(crane_id);
     CREATE INDEX IF NOT EXISTS idx_position_snapshots_timestamp ON device_position_snapshots(timestamp);
+
+    CREATE TABLE IF NOT EXISTS drivers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      gender TEXT NOT NULL DEFAULT 'male',
+      id_card TEXT NOT NULL UNIQUE,
+      phone TEXT NOT NULL,
+      emergency_contact TEXT,
+      emergency_phone TEXT,
+      address TEXT,
+      photo TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      hire_date TEXT NOT NULL,
+      leave_date TEXT,
+      experience_years INTEGER DEFAULT 0,
+      crane_id TEXT REFERENCES cranes(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drivers_id_card ON drivers(id_card);
+    CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers(status);
+    CREATE INDEX IF NOT EXISTS idx_drivers_crane ON drivers(crane_id);
+
+    CREATE TABLE IF NOT EXISTS driver_certifications (
+      id TEXT PRIMARY KEY,
+      driver_id TEXT NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+      cert_type TEXT NOT NULL,
+      cert_number TEXT NOT NULL,
+      issue_authority TEXT NOT NULL,
+      issue_date TEXT NOT NULL,
+      expiry_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'valid',
+      remark TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_driver_certs_driver ON driver_certifications(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_driver_certs_status ON driver_certifications(status);
+    CREATE INDEX IF NOT EXISTS idx_driver_certs_expiry ON driver_certifications(expiry_date);
+
+    CREATE TABLE IF NOT EXISTS driver_work_records (
+      id TEXT PRIMARY KEY,
+      driver_id TEXT NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+      crane_id TEXT NOT NULL REFERENCES cranes(id),
+      work_date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      work_type TEXT NOT NULL,
+      work_content TEXT,
+      load_count INTEGER DEFAULT 0,
+      max_load REAL DEFAULT 0,
+      remark TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_work_records_driver ON driver_work_records(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_work_records_crane ON driver_work_records(crane_id);
+    CREATE INDEX IF NOT EXISTS idx_work_records_date ON driver_work_records(work_date);
+
+    CREATE TABLE IF NOT EXISTS driver_schedules (
+      id TEXT PRIMARY KEY,
+      driver_id TEXT NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+      crane_id TEXT NOT NULL REFERENCES cranes(id),
+      schedule_date TEXT NOT NULL,
+      shift_type TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      remark TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_schedules_driver ON driver_schedules(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_schedules_crane ON driver_schedules(crane_id);
+    CREATE INDEX IF NOT EXISTS idx_schedules_date ON driver_schedules(schedule_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_schedules_unique ON driver_schedules(driver_id, schedule_date, shift_type);
+
+    CREATE TABLE IF NOT EXISTS driver_trainings (
+      id TEXT PRIMARY KEY,
+      driver_id TEXT NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+      training_type TEXT NOT NULL,
+      training_name TEXT NOT NULL,
+      training_date TEXT NOT NULL,
+      duration_hours REAL NOT NULL,
+      trainer TEXT,
+      training_org TEXT,
+      result TEXT NOT NULL DEFAULT 'pending',
+      score REAL,
+      remark TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_trainings_driver ON driver_trainings(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_trainings_type ON driver_trainings(training_type);
+    CREATE INDEX IF NOT EXISTS idx_trainings_date ON driver_trainings(training_date);
   `)
 
   migrateCranesTable(database)
@@ -315,6 +414,7 @@ function seedInitialData(database: Database.Database): void {
   seedCraneData(database)
   seedUserData(database)
   seedCollisionRules(database)
+  seedDriverData(database)
 }
 
 function seedCollisionRules(database: Database.Database): void {
@@ -618,3 +718,258 @@ function seedUserData(database: Database.Database): void {
 }
 
 export default getDatabase
+
+function seedDriverData(database: Database.Database): void {
+  const driverCount = database.prepare('SELECT COUNT(*) as count FROM drivers').get() as { count: number }
+  if (driverCount.count > 0) return
+
+  const cranes = database.prepare('SELECT id, name FROM cranes ORDER BY name').all() as { id: string; name: string }[]
+  if (cranes.length === 0) return
+
+  const now = new Date().toISOString()
+
+  const insertDriver = database.prepare(`
+    INSERT INTO drivers (id, name, gender, id_card, phone, emergency_contact, emergency_phone, address, status, hire_date, experience_years, crane_id, created_at, updated_at)
+    VALUES (@id, @name, @gender, @id_card, @phone, @emergency_contact, @emergency_phone, @address, @status, @hire_date, @experience_years, @crane_id, @created_at, @updated_at)
+  `)
+
+  const insertCert = database.prepare(`
+    INSERT INTO driver_certifications (id, driver_id, cert_type, cert_number, issue_authority, issue_date, expiry_date, status, remark, created_at, updated_at)
+    VALUES (@id, @driver_id, @cert_type, @cert_number, @issue_authority, @issue_date, @expiry_date, @status, @remark, @created_at, @updated_at)
+  `)
+
+  const insertWorkRecord = database.prepare(`
+    INSERT INTO driver_work_records (id, driver_id, crane_id, work_date, start_time, end_time, work_type, work_content, load_count, max_load, remark, created_at)
+    VALUES (@id, @driver_id, @crane_id, @work_date, @start_time, @end_time, @work_type, @work_content, @load_count, @max_load, @remark, @created_at)
+  `)
+
+  const insertSchedule = database.prepare(`
+    INSERT INTO driver_schedules (id, driver_id, crane_id, schedule_date, shift_type, start_time, end_time, status, remark, created_at, updated_at)
+    VALUES (@id, @driver_id, @crane_id, @schedule_date, @shift_type, @start_time, @end_time, @status, @remark, @created_at, @updated_at)
+  `)
+
+  const insertTraining = database.prepare(`
+    INSERT INTO driver_trainings (id, driver_id, training_type, training_name, training_date, duration_hours, trainer, training_org, result, score, remark, created_at, updated_at)
+    VALUES (@id, @driver_id, @training_type, @training_name, @training_date, @duration_hours, @trainer, @training_org, @result, @score, @remark, @created_at, @updated_at)
+  `)
+
+  const drivers = [
+    {
+      id: uuidv4(),
+      name: '张伟',
+      gender: 'male',
+      id_card: '320102199001011234',
+      phone: '13912345678',
+      emergency_contact: '张丽',
+      emergency_phone: '13987654321',
+      address: '江苏省南京市鼓楼区中央路100号',
+      status: 'active',
+      hire_date: '2023-03-15',
+      experience_years: 8,
+      crane_id: cranes[0]?.id || null,
+    },
+    {
+      id: uuidv4(),
+      name: '李强',
+      gender: 'male',
+      id_card: '320105198805052345',
+      phone: '13823456789',
+      emergency_contact: '李芳',
+      emergency_phone: '13898765432',
+      address: '江苏省南京市建邺区河西大街200号',
+      status: 'active',
+      hire_date: '2022-06-20',
+      experience_years: 12,
+      crane_id: cranes[1]?.id || null,
+    },
+    {
+      id: uuidv4(),
+      name: '王磊',
+      gender: 'male',
+      id_card: '320106199203033456',
+      phone: '13734567890',
+      emergency_contact: '王芳',
+      emergency_phone: '13709876543',
+      address: '江苏省南京市玄武区中山路300号',
+      status: 'active',
+      hire_date: '2024-01-10',
+      experience_years: 5,
+      crane_id: cranes[2]?.id || null,
+    },
+    {
+      id: uuidv4(),
+      name: '陈刚',
+      gender: 'male',
+      id_card: '320104199507074567',
+      phone: '13645678901',
+      emergency_contact: '陈静',
+      emergency_phone: '13610987654',
+      address: '江苏省南京市秦淮区夫子庙50号',
+      status: 'leave',
+      hire_date: '2023-09-01',
+      experience_years: 6,
+      crane_id: null,
+    },
+    {
+      id: uuidv4(),
+      name: '赵勇',
+      gender: 'male',
+      id_card: '320111199104045678',
+      phone: '13556789012',
+      emergency_contact: '赵敏',
+      emergency_phone: '13521098765',
+      address: '江苏省南京市浦口区江浦街道80号',
+      status: 'active',
+      hire_date: '2021-11-15',
+      experience_years: 15,
+      crane_id: cranes[3]?.id || null,
+    },
+  ]
+
+  const tx = database.transaction(() => {
+    for (const driver of drivers) {
+      insertDriver.run({
+        id: driver.id,
+        name: driver.name,
+        gender: driver.gender,
+        id_card: driver.id_card,
+        phone: driver.phone,
+        emergency_contact: driver.emergency_contact,
+        emergency_phone: driver.emergency_phone,
+        address: driver.address,
+        photo: null,
+        status: driver.status,
+        hire_date: driver.hire_date,
+        leave_date: null,
+        experience_years: driver.experience_years,
+        crane_id: driver.crane_id,
+        created_at: now,
+        updated_at: now,
+      })
+
+      insertCert.run({
+        id: uuidv4(),
+        driver_id: driver.id,
+        cert_type: 'tower_crane_operator',
+        cert_number: `TC-${driver.id_card.slice(-4)}-${new Date(driver.hire_date).getFullYear()}`,
+        issue_authority: '江苏省住房和城乡建设厅',
+        issue_date: driver.hire_date,
+        expiry_date: '2027-12-31',
+        status: 'valid',
+        remark: null,
+        created_at: now,
+        updated_at: now,
+      })
+
+      insertCert.run({
+        id: uuidv4(),
+        driver_id: driver.id,
+        cert_type: 'safety_training',
+        cert_number: `ST-${driver.id_card.slice(-4)}-2026`,
+        issue_authority: '江苏省安全生产监督管理局',
+        issue_date: '2026-01-15',
+        expiry_date: '2027-01-14',
+        status: 'valid',
+        remark: '年度安全培训合格',
+        created_at: now,
+        updated_at: now,
+      })
+
+      if (driver.crane_id) {
+        const recentDates = ['2026-06-14', '2026-06-13', '2026-06-12']
+        for (const date of recentDates) {
+          insertWorkRecord.run({
+            id: uuidv4(),
+            driver_id: driver.id,
+            crane_id: driver.crane_id,
+            work_date: date,
+            start_time: `${date}T07:00:00`,
+            end_time: `${date}T17:00:00`,
+            work_type: 'normal',
+            work_content: '日常吊装作业',
+            load_count: Math.floor(Math.random() * 30) + 20,
+            max_load: Math.round((Math.random() * 5 + 2) * 10) / 10,
+            remark: null,
+            created_at: now,
+          })
+
+          insertSchedule.run({
+            id: uuidv4(),
+            driver_id: driver.id,
+            crane_id: driver.crane_id,
+            schedule_date: date,
+            shift_type: 'day',
+            start_time: '07:00',
+            end_time: '17:00',
+            status: date === '2026-06-14' ? 'scheduled' : 'completed',
+            remark: null,
+            created_at: now,
+            updated_at: now,
+          })
+        }
+
+        insertSchedule.run({
+          id: uuidv4(),
+          driver_id: driver.id,
+          crane_id: driver.crane_id,
+          schedule_date: '2026-06-15',
+          shift_type: 'day',
+          start_time: '07:00',
+          end_time: '17:00',
+          status: 'scheduled',
+          remark: null,
+          created_at: now,
+          updated_at: now,
+        })
+
+        insertSchedule.run({
+          id: uuidv4(),
+          driver_id: driver.id,
+          crane_id: driver.crane_id,
+          schedule_date: '2026-06-16',
+          shift_type: 'day',
+          start_time: '07:00',
+          end_time: '17:00',
+          status: 'scheduled',
+          remark: null,
+          created_at: now,
+          updated_at: now,
+        })
+      }
+
+      insertTraining.run({
+        id: uuidv4(),
+        driver_id: driver.id,
+        training_type: 'safety',
+        training_name: '塔机安全操作规程培训',
+        training_date: '2026-03-20',
+        duration_hours: 8,
+        trainer: '王安全',
+        training_org: '江苏省建筑安全培训中心',
+        result: 'passed',
+        score: 92,
+        remark: null,
+        created_at: now,
+        updated_at: now,
+      })
+
+      insertTraining.run({
+        id: uuidv4(),
+        driver_id: driver.id,
+        training_type: 'skill',
+        training_name: '塔机操作技能提升培训',
+        training_date: '2026-05-10',
+        duration_hours: 16,
+        trainer: '刘师傅',
+        training_org: '中联重科培训学院',
+        result: 'passed',
+        score: 88,
+        remark: null,
+        created_at: now,
+        updated_at: now,
+      })
+    }
+  })
+
+  tx()
+}

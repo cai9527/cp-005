@@ -13,6 +13,7 @@ import Register from "@/pages/Register";
 import DeviceStatus from "@/pages/DeviceStatus";
 import RotationSimulator from "@/pages/RotationSimulator";
 import CollisionMonitor from "@/pages/CollisionMonitor";
+import Drivers from "@/pages/Drivers";
 import { useAuthStore, type UserRole } from "@/stores/authStore";
 
 interface RouteConfig {
@@ -32,6 +33,7 @@ const routes: RouteConfig[] = [
   { path: "alerts", element: <Alerts />, roles: ["admin", "user"] },
   { path: "analysis", element: <Analysis />, roles: ["admin"] },
   { path: "users", element: <Users />, roles: ["admin"] },
+  { path: "drivers", element: <Drivers />, roles: ["admin"] },
   { path: "profile", element: <Profile />, roles: ["admin", "user"] },
 ]
 
